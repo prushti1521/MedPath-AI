@@ -52,7 +52,10 @@ router.post("/login", async (req, res) => {
   }
   const { email, password } = parsed.data;
 
-  const result = await query("SELECT id, email, role, password_hash FROM users WHERE email = $1", [email]);
+  const result = await query(
+    "SELECT id, email, role, password_hash, is_deleted FROM users WHERE email = $1 AND is_deleted = false",
+    [email]
+  );
   const user = result.rows[0];
 
   // Constant-time-ish response regardless of whether the user exists
@@ -63,8 +66,80 @@ router.post("/login", async (req, res) => {
     return res.status(401).json({ error: "Invalid email or password." });
   }
 
+  // Update last login and track login history
+  await query(
+    "UPDATE users SET last_login_at = now(), updated_at = now() WHERE id = $1",
+    [user.id]
+  );
+
+  await query(
+    "INSERT INTO login_history (user_id, ip_address, user_agent, success) VALUES ($1, $2, $3, true)",
+    [user.id, req.ip, req.get("user-agent")]
+  );
+
   const token = signToken(user);
   res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
+});
+
+router.post("/logout", async (req, res) => {
+  // Logout is optional in JWT flow, but we can log it for security audit
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(400).json({ error: "No auth token provided." });
+  }
+
+  const token = authHeader.replace("Bearer ", "");
+  let userId;
+
+  try {
+    const decoded = JSON.parse(Buffer.from(token.split(".")[1], "base64").toString());
+    userId = decoded.id;
+  } catch (err) {
+    return res.status(401).json({ error: "Invalid token." });
+  }
+
+  // Update the most recent login session's logout time
+  await query(
+    "UPDATE login_history SET logout_at = now() WHERE id = (SELECT id FROM login_history WHERE user_id = $1 AND logout_at IS NULL ORDER BY login_at DESC LIMIT 1)",
+    [userId]
+  );
+
+  res.json({ message: "Logged out successfully." });
+});
+
+router.delete("/account", async (req, res) => {
+  // Requires auth — will add middleware check
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated." });
+  }
+
+  const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({ error: "Password is required to delete account." });
+  }
+
+  // Verify password before deletion
+  const userResult = await query(
+    "SELECT password_hash FROM users WHERE id = $1 AND is_deleted = false",
+    [req.user.id]
+  );
+
+  if (!userResult.rowCount) {
+    return res.status(404).json({ error: "User not found." });
+  }
+
+  const valid = await bcrypt.compare(password, userResult.rows[0].password_hash);
+  if (!valid) {
+    return res.status(401).json({ error: "Incorrect password." });
+  }
+
+  // Soft delete account
+  await query(
+    "UPDATE users SET is_deleted = true, deleted_at = now(), updated_at = now() WHERE id = $1",
+    [req.user.id]
+  );
+
+  res.json({ message: "Account deleted successfully. Your data has been archived." });
 });
 
 export default router;

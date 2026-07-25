@@ -9,6 +9,12 @@ import profileRoutes from "./routes/profile.routes.js";
 import symptomsRoutes from "./routes/symptoms.routes.js";
 import providersRoutes from "./routes/providers.routes.js";
 import medicationsRoutes from "./routes/medications.routes.js";
+import dashboardRoutes from "./routes/dashboard.routes.js";
+import reportsRoutes from "./routes/reports.routes.js";
+import prescriptionsRoutes from "./routes/prescriptions.routes.js";
+import historyRoutes from "./routes/history.routes.js";
+import remindersRoutes from "./routes/reminders.routes.js";
+import conversationsRoutes from "./routes/conversations.routes.js";
 
 dotenv.config();
 
@@ -17,6 +23,7 @@ const app = express();
 app.use(helmet());
 app.use(cors({ origin: process.env.CORS_ORIGIN?.split(",") || "*" }));
 app.use(express.json({ limit: "2mb" }));
+app.use(express.static("src/uploads"));
 
 // Global rate limit; tighten further on /auth in production
 app.use(
@@ -35,6 +42,12 @@ app.use("/profile", profileRoutes);
 app.use("/symptoms", symptomsRoutes);
 app.use("/providers", providersRoutes);
 app.use("/medications", medicationsRoutes);
+app.use("/dashboard", dashboardRoutes);
+app.use("/reports", reportsRoutes);
+app.use("/prescriptions", prescriptionsRoutes);
+app.use("/history", historyRoutes);
+app.use("/reminders", remindersRoutes);
+app.use("/conversations", conversationsRoutes);
 
 // Central error handler — never leak stack traces to the client
 app.use((err, req, res, next) => {

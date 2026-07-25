@@ -31,6 +31,7 @@ const T = {
 };
 
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap');`;
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
 const URGENCY = {
   emergency: { label: "Emergency", color: T.red, order: 3, action: "Call emergency services or go to the ER now.", icon: ShieldAlert },
@@ -93,9 +94,10 @@ function runTriage(answers) {
 /* ---------------------------------------------------------------
    SMALL UI PRIMITIVES
 ----------------------------------------------------------------*/
-function Card({ children, style, className }) {
+function Card({ children, style, className, onClick }) {
   return (
     <div
+      onClick={onClick}
       className={className}
       style={{
         background: T.paperRaised,
@@ -300,43 +302,285 @@ function EmergencyBanner({ crisis, onDismiss }) {
 /* ---------------------------------------------------------------
    HOME
 ----------------------------------------------------------------*/
-function HomePage({ go, profile }) {
-  const cards = [
+function DashboardCard({ title, value, label, icon: Icon, accent, onClick }) {
+  return (
+    <Card style={{ borderColor: accent, cursor: onClick ? "pointer" : "default" }} onClick={onClick}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: T.inkSoft, textTransform: "uppercase", letterSpacing: 1 }}>{label}</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: T.ink, marginTop: 6 }}>{title}</div>
+        </div>
+        <div style={{ width: 42, height: 42, borderRadius: 12, background: `${accent}18`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Icon size={20} color={accent} />
+        </div>
+      </div>
+      {value && <div style={{ fontSize: 14, color: T.inkSoft, lineHeight: 1.6 }}>{value}</div>}
+    </Card>
+  );
+}
+
+function LoginPage({ onLogin }) {
+  const [mode, setMode] = useState("login"); // "login" or "signup"
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleLogin() {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to sign in.");
+      onLogin(data.token, { name: data.user?.fullName || data.user?.email || email, email: data.user?.email || email });
+    } catch (err) {
+      setError(err.message || "Unable to sign in.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSignup() {
+    setLoading(true);
+    setError("");
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      setLoading(false);
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, fullName: name }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to sign up.");
+      onLogin(data.token, { name: data.user?.fullName || name || email, email: data.user?.email || email });
+    } catch (err) {
+      setError(err.message || "Unable to sign up.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const isLoginMode = mode === "login";
+
+  return (
+    <div style={{ maxWidth: 440, margin: "0 auto", paddingTop: 40 }}>
+      <Card style={{ padding: 28, maxWidth: 480, margin: "0 auto" }}>
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ color: T.clayDeep, fontSize: 12.5, letterSpacing: 1, fontWeight: 700, textTransform: "uppercase" }}>
+            {isLoginMode ? "Sign in" : "Create account"}
+          </div>
+          <h2 style={{ margin: "10px 0 0", fontFamily: "Fraunces, serif", fontSize: 28 }}>
+            {isLoginMode ? "Welcome back to MedPath AI" : "Join MedPath AI"}
+          </h2>
+          <p style={{ color: T.inkSoft, lineHeight: 1.6, marginTop: 10 }}>
+            {isLoginMode
+              ? "Enter your email and password to access your personal health dashboard."
+              : "Create an account to get started with your personal health dashboard."}
+          </p>
+        </div>
+        <div style={{ display: "grid", gap: 14 }}>
+          {!isLoginMode && (
+            <label style={{ display: "block" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: T.inkSoft, marginBottom: 6 }}>Full name</div>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                style={inputStyle}
+                type="text"
+                placeholder="John Doe"
+              />
+            </label>
+          )}
+          <label style={{ display: "block" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: T.inkSoft, marginBottom: 6 }}>Email</div>
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={inputStyle}
+              type="email"
+              placeholder="you@example.com"
+            />
+          </label>
+          <label style={{ display: "block" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: T.inkSoft, marginBottom: 6 }}>Password</div>
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={inputStyle}
+              type="password"
+              placeholder="••••••••"
+            />
+          </label>
+          {!isLoginMode && (
+            <label style={{ display: "block" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: T.inkSoft, marginBottom: 6 }}>Confirm password</div>
+              <input
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                style={inputStyle}
+                type="password"
+                placeholder="••••••••"
+              />
+            </label>
+          )}
+          {error && <div style={{ color: T.red, fontSize: 13 }}>{error}</div>}
+          <PrimaryButton
+            onClick={isLoginMode ? handleLogin : handleSignup}
+            disabled={
+              loading ||
+              !email ||
+              !password ||
+              (!isLoginMode && (!name || password !== confirmPassword))
+            }
+          >
+            {loading ? (isLoginMode ? "Signing in…" : "Creating account…") : isLoginMode ? "Sign in" : "Create account"}
+          </PrimaryButton>
+          <div style={{ textAlign: "center", marginTop: 12 }}>
+            <button
+              onClick={() => {
+                setMode(isLoginMode ? "signup" : "login");
+                setError("");
+              }}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: T.teal,
+                cursor: "pointer",
+                fontSize: 13,
+                textDecoration: "underline",
+              }}
+            >
+              {isLoginMode ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
+            </button>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function HomePage({ go, profile, dashboard, loadingDashboard, authToken }) {
+  const defaultCards = [
     { key: "symptom", title: "Check symptoms", desc: "Answer a few questions and get an urgency read before you decide what to do next.", icon: Stethoscope, accent: T.teal },
     { key: "appointments", title: "Prep for a visit", desc: "Get a personalized checklist of what to bring and ask.", icon: CalendarCheck, accent: T.clay },
     { key: "doctors", title: "Find a provider", desc: "Search nearby clinics and specialists.", icon: MapPin, accent: T.blue },
     { key: "ask", title: "Ask about a condition", desc: "Plain-language explanations, grounded in trusted sources.", icon: MessageCircleQuestion, accent: T.sage },
   ];
+
   return (
     <div>
       <SectionTitle
         eyebrow="Your health, guided"
-        title={`Welcome back${profile.name ? ", " + profile.name.split(" ")[0] : ""}`} 
+        title={`Welcome back${profile.name ? ", " + profile.name.split(" ")[0] : ""}`}
         sub="Not sure what your symptoms mean or where to go? Start here — this navigator helps you decide, prepare, and follow through, without replacing your doctor."
       />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 14, marginBottom: 26 }}>
-        {cards.map((c) => (
-          <Card key={c.key} style={{ cursor: "pointer" }} className="hoverable">
-            <div onClick={() => go(c.key)}>
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: `${c.accent}18`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
-                <c.icon size={20} color={c.accent} />
-              </div>
-              <div style={{ fontWeight: 600, fontSize: 15.5, color: T.ink, marginBottom: 6 }}>{c.title}</div>
-              <div style={{ fontSize: 13.5, color: T.inkSoft, lineHeight: 1.5 }}>{c.desc}</div>
-              <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 4, color: c.accent, fontSize: 13, fontWeight: 600 }}>
-                Open <ChevronRight size={14} />
-              </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 24 }}>
+        <DashboardCard
+          title={dashboard?.healthStatus || "Good"}
+          label="Today's Health Status"
+          value={dashboard?.healthSummary || "No new alerts."}
+          icon={HeartPulse}
+          accent={T.teal}
+          onClick={() => go("symptom")}
+        />
+        <DashboardCard
+          title={dashboard?.nextAppointment?.provider || "No upcoming visits"}
+          label="Upcoming Appointments"
+          value={dashboard?.nextAppointment ? `${new Date(dashboard.nextAppointment.scheduledFor).toLocaleString()} at ${dashboard.nextAppointment.provider}` : "Schedule a check-in or follow-up."}
+          icon={CalendarCheck}
+          accent={T.clay}
+          onClick={() => go("appointments")}
+        />
+        <DashboardCard
+          title={`${dashboard?.medicationReminders || 0} active`}
+          label="Medication Reminder"
+          value={dashboard?.medicationReminders ? "Take meds on time" : "No reminders due."}
+          icon={PillIcon}
+          accent={T.blue}
+          onClick={() => go("meds")}
+        />
+        <DashboardCard
+          title={`${dashboard?.recentSymptoms?.length || 0} logged`}
+          label="Recent Symptoms"
+          value={dashboard?.recentSymptoms?.slice(0, 2).map((s) => s.free_text).join(" · ") || "No recent symptom entries."}
+          icon={AlertTriangle}
+          accent={T.red}
+          onClick={() => go("symptom")}
+        />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 26 }}>
+        <DashboardCard
+          title={dashboard?.healthScore ? `${dashboard.healthScore}/100` : "—"}
+          label="Health Score"
+          value={dashboard?.healthScoreDetails || "Based on recent symptom and vitals trends."}
+          icon={Sparkles}
+          accent={T.sage}
+        />
+        <DashboardCard
+          title={`${dashboard?.riskAlerts?.length || 0}`}
+          label="Risk Alerts"
+          value={dashboard?.riskAlerts?.join(" · ") || "No active alerts."}
+          icon={ShieldAlert}
+          accent={T.red}
+        />
+        <DashboardCard
+          title="AI Suggestions"
+          label="AI Suggestions"
+          value={dashboard?.aiSuggestions?.slice(0, 2).join(" · ") || "Ask the assistant for next steps."}
+          icon={MessageCircleQuestion}
+          accent={T.blue}
+          onClick={() => go("ask")}
+        />
+        <DashboardCard
+          title={`${dashboard?.recentReports?.length || 0}`}
+          label="Recent Reports"
+          value={dashboard?.recentReports?.map((r) => r.report_type).join(" · ") || "No reports uploaded yet."}
+          icon={FileText}
+          accent={T.clay}
+        />
+      </div>
+
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 17 }}>Quick Actions</div>
+            <div style={{ fontSize: 13.5, color: T.inkSoft, marginTop: 6 }}>Jump straight to the most common tasks.</div>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <GhostButton icon={Plus} onClick={() => go("symptom")}>Log symptom</GhostButton>
+            <GhostButton icon={CalendarCheck} onClick={() => go("appointments")}>Add appointment</GhostButton>
+            <GhostButton icon={PillIcon} onClick={() => go("meds")}>Add medication</GhostButton>
+            <GhostButton icon={FileText} onClick={() => go("profile")}>Update profile</GhostButton>
+          </div>
+        </div>
+        {loadingDashboard && <div style={{ color: T.inkSoft }}>Loading dashboard…</div>}
+        {!loadingDashboard && !dashboard && <div style={{ color: T.inkSoft }}>Sign in and grant access to view your personalized health dashboard.</div>}
+      </Card>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 14, marginTop: 24 }}>
+        {defaultCards.map((c) => (
+          <Card key={c.key} style={{ cursor: "pointer" }} className="hoverable" onClick={() => go(c.key)}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: `${c.accent}18`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+              <c.icon size={22} color={c.accent} />
             </div>
+            <div style={{ fontWeight: 600, fontSize: 16, color: T.ink, marginBottom: 8 }}>{c.title}</div>
+            <div style={{ fontSize: 14, color: T.inkSoft, lineHeight: 1.6 }}>{c.desc}</div>
           </Card>
         ))}
       </div>
-      <Card style={{ background: T.tealDeep, border: "none", color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
-        <div>
-          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>This is a guide, not a diagnosis</div>
-          <div style={{ fontSize: 13.5, opacity: 0.85, maxWidth: 480 }}>Every assessment here is educational. For anything severe or fast-changing, contact a medical professional or emergency services directly.</div>
-        </div>
-        <Sparkles size={28} style={{ opacity: 0.6, flexShrink: 0 }} />
-      </Card>
     </div>
   );
 }
@@ -506,9 +750,64 @@ function Field({ label, children }) {
 }
 const inputStyle = { width: "100%", border: `1px solid ${T.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, fontFamily: "Inter, sans-serif", boxSizing: "border-box", color: T.ink };
 
-function ProfilePage({ profile, setProfile }) {
-  const update = (k, v) => setProfile((p) => ({ ...p, [k]: v }));
+function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
+  const [error, setError] = useState("");
+  const [saveStatus, setSaveStatus] = useState("idle");
   const [tagInput, setTagInput] = useState({ allergies: "", conditions: "" });
+  const authToken = typeof window !== "undefined" ? localStorage.getItem("AUTH_TOKEN") || localStorage.getItem("authToken") : "";
+  const canSave = Boolean(authToken);
+
+  const update = (k, v) => setProfile((p) => ({ ...p, [k]: v }));
+
+  async function saveProfile() {
+    setSaveStatus("saving");
+    setError("");
+
+    if (!canSave) {
+      setSaveStatus("error");
+      setError("Log in to save this profile to your account.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/profile`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          fullName: profile.name,
+          email: profile.email,
+          phoneNumber: profile.phoneNumber,
+          profilePhotoPath: profile.profilePhotoPath,
+          dateOfBirth: profile.dateOfBirth || null,
+          age: profile.age ? Number(profile.age) : null,
+          sex: profile.gender,
+          bloodType: profile.bloodType,
+          heightCm: profile.height ? Number(profile.height) : null,
+          weightKg: profile.weight ? Number(profile.weight) : null,
+          insuranceProvider: profile.insuranceProvider,
+          emergencyContact: profile.emergencyContact,
+          address: profile.address,
+          country: profile.country,
+          preferredLanguage: profile.preferredLanguage,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Unable to save profile.");
+      }
+
+      const data = await response.json();
+      setProfile((p) => ({ ...p, ...data.profile }));
+      setSaveStatus("saved");
+    } catch (err) {
+      setSaveStatus("error");
+      setError(err.message || "Unable to save profile.");
+    }
+  }
 
   function addTag(field) {
     const val = tagInput[field].trim();
@@ -516,66 +815,150 @@ function ProfilePage({ profile, setProfile }) {
     update(field, [...(profile[field] || []), val]);
     setTagInput((t) => ({ ...t, [field]: "" }));
   }
+
   function removeTag(field, i) {
     update(field, profile[field].filter((_, idx) => idx !== i));
   }
 
   return (
     <div>
-      <SectionTitle eyebrow="Your medical profile" title="Keep this up to date" sub="Stored details help personalize triage, appointment prep, and drug interaction checks." />
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
+        <SectionTitle eyebrow="Your medical profile" title="Keep this up to date" sub="Stored details help personalize triage, appointment prep, and drug interaction checks." />
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <GhostButton icon={Check} onClick={saveProfile} disabled={saveStatus === "saving"} style={{ padding: "10px 16px" }}>
+            {saveStatus === "saving" ? "Saving…" : "Save profile"}
+          </GhostButton>
+          {saveStatus === "saved" && <span style={{ color: T.sage, fontSize: 13 }}>Saved</span>}
+          {saveStatus === "error" && <span style={{ color: T.red, fontSize: 13 }}>Failed</span>}
+        </div>
+      </div>
+      {error && <p style={{ fontSize: 13, color: T.red, marginBottom: 14 }}>{error}</p>}
+      {!canSave && <p style={{ fontSize: 13, color: T.inkSoft, marginTop: -10, marginBottom: 14 }}>No auth token found. Login later to persist changes to your account.</p>}
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
         <Card>
-          <div style={{ fontWeight: 600, marginBottom: 14, color: T.ink }}>Basics</div>
-          <Field label="Full name"><input style={inputStyle} value={profile.name} onChange={(e) => update("name", e.target.value)} placeholder="Jordan Ellis" /></Field>
+          <div style={{ fontWeight: 600, marginBottom: 14, color: T.ink }}>Personal details</div>
+          <Field label="Full name">
+            <input style={inputStyle} value={profile.name} onChange={(e) => update("name", e.target.value)} placeholder="Jordan Ellis" />
+          </Field>
+          <Field label="Email">
+            <input style={inputStyle} type="email" value={profile.email} onChange={(e) => update("email", e.target.value)} placeholder="jordan@example.com" />
+          </Field>
+          <Field label="Phone number">
+            <input style={inputStyle} type="tel" value={profile.phoneNumber} onChange={(e) => update("phoneNumber", e.target.value)} placeholder="(415) 555-0124" />
+          </Field>
+          <Field label="Profile photo">
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ width: 80, height: 80, borderRadius: "50%", overflow: "hidden", background: T.line, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {profile.profilePhotoPath ? (
+                  <img src={profile.profilePhotoPath} alt="Profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  <UserCircle size={38} color={T.inkSoft} />
+                )}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <input
+                  id="profile-photo-upload"
+                  style={{ display: "none" }}
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      await uploadPhoto(file);
+                    } catch (err) {
+                      setError(err.message || "Unable to upload photo.");
+                    }
+                  }}
+                />
+                <GhostButton icon={Upload} onClick={() => document.getElementById("profile-photo-upload")?.click()} style={{ padding: "9px 12px" }}>
+                  {profile.profilePhotoPath ? "Change photo" : "Upload photo"}
+                </GhostButton>
+                {profile.profilePhotoPath && (
+                  <GhostButton icon={X} onClick={async () => {
+                    try {
+                      await removePhoto();
+                    } catch (err) {
+                      setError(err.message || "Unable to remove photo.");
+                    }
+                  }} style={{ padding: "9px 12px" }}>
+                    Remove photo
+                  </GhostButton>
+                )}
+              </div>
+            </div>
+          </Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Age"><input style={inputStyle} type="number" value={profile.age} onChange={(e) => update("age", e.target.value)} placeholder="34" /></Field>
-            <Field label="Sex"><select style={inputStyle} value={profile.sex} onChange={(e) => update("sex", e.target.value)}><option value="">Select</option><option>Female</option><option>Male</option><option>Other</option></select></Field>
-            <Field label="Height (cm)"><input style={inputStyle} type="number" value={profile.height} onChange={(e) => update("height", e.target.value)} placeholder="170" /></Field>
-            <Field label="Weight (kg)"><input style={inputStyle} type="number" value={profile.weight} onChange={(e) => update("weight", e.target.value)} placeholder="68" /></Field>
+            <Field label="Date of birth">
+              <input style={inputStyle} type="date" value={profile.dateOfBirth} onChange={(e) => update("dateOfBirth", e.target.value)} />
+            </Field>
+            <Field label="Age">
+              <input style={inputStyle} type="number" value={profile.age} onChange={(e) => update("age", e.target.value)} placeholder="34" />
+            </Field>
           </div>
-          <Field label="Blood type"><select style={inputStyle} value={profile.bloodType} onChange={(e) => update("bloodType", e.target.value)}><option value="">Unknown</option>{["A+","A-","B+","B-","AB+","AB-","O+","O-"].map(b => <option key={b}>{b}</option>)}</select></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Gender">
+              <select style={inputStyle} value={profile.gender} onChange={(e) => update("gender", e.target.value)}>
+                <option value="">Select</option>
+                <option>Female</option>
+                <option>Male</option>
+                <option>Other</option>
+                <option>Prefer not to say</option>
+              </select>
+            </Field>
+            <Field label="Blood group">
+              <select style={inputStyle} value={profile.bloodType} onChange={(e) => update("bloodType", e.target.value)}>
+                <option value="">Unknown</option>
+                {["A+","A-","B+","B-","AB+","AB-","O+","O-"].map((b) => <option key={b}>{b}</option>)}
+              </select>
+            </Field>
+          </div>
         </Card>
 
         <Card>
-          <div style={{ fontWeight: 600, marginBottom: 14, color: T.ink }}>Allergies</div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-            <input style={inputStyle} value={tagInput.allergies} onChange={(e) => setTagInput((t) => ({ ...t, allergies: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && addTag("allergies")} placeholder="e.g. Penicillin" />
-            <GhostButton icon={Plus} onClick={() => addTag("allergies")} style={{ padding: "9px 12px" }}>Add</GhostButton>
+          <div style={{ fontWeight: 600, marginBottom: 14, color: T.ink }}>Health & coverage</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Height (cm)"><input style={inputStyle} type="number" value={profile.height} onChange={(e) => update("height", e.target.value)} placeholder="170" /></Field>
+            <Field label="Weight (kg)"><input style={inputStyle} type="number" value={profile.weight} onChange={(e) => update("weight", e.target.value)} placeholder="68" /></Field>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {(profile.allergies || []).map((a, i) => (
-              <span key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: `${T.red}14`, color: T.red, padding: "5px 10px", borderRadius: 999, fontSize: 12.5, fontWeight: 600 }}>
-                {a} <X size={12} style={{ cursor: "pointer" }} onClick={() => removeTag("allergies", i)} />
-              </span>
-            ))}
-            {!(profile.allergies || []).length && <span style={{ fontSize: 13, color: T.inkSoft }}>No known allergies added.</span>}
-          </div>
-
-          <div style={{ fontWeight: 600, margin: "20px 0 14px", color: T.ink }}>Chronic conditions</div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-            <input style={inputStyle} value={tagInput.conditions} onChange={(e) => setTagInput((t) => ({ ...t, conditions: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && addTag("conditions")} placeholder="e.g. Asthma" />
-            <GhostButton icon={Plus} onClick={() => addTag("conditions")} style={{ padding: "9px 12px" }}>Add</GhostButton>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {(profile.conditions || []).map((a, i) => (
-              <span key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: `${T.blue}14`, color: T.blue, padding: "5px 10px", borderRadius: 999, fontSize: 12.5, fontWeight: 600 }}>
-                {a} <X size={12} style={{ cursor: "pointer" }} onClick={() => removeTag("conditions", i)} />
-              </span>
-            ))}
-            {!(profile.conditions || '').length && <span style={{ fontSize: 13, color: T.inkSoft }}>None added.</span>}
+          <Field label="Insurance provider"><input style={inputStyle} value={profile.insuranceProvider} onChange={(e) => update("insuranceProvider", e.target.value)} placeholder="HealthFirst" /></Field>
+          <Field label="Emergency contact"><input style={inputStyle} value={profile.emergencyContact} onChange={(e) => update("emergencyContact", e.target.value)} placeholder="Alex Ellis — (415) 555-0146" /></Field>
+          <Field label="Address"><input style={inputStyle} value={profile.address} onChange={(e) => update("address", e.target.value)} placeholder="120 Market St, San Francisco, CA" /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Country"><input style={inputStyle} value={profile.country} onChange={(e) => update("country", e.target.value)} placeholder="USA" /></Field>
+            <Field label="Preferred language"><input style={inputStyle} value={profile.preferredLanguage} onChange={(e) => update("preferredLanguage", e.target.value)} placeholder="English" /></Field>
           </div>
         </Card>
       </div>
 
       <Card style={{ marginTop: 16 }}>
-        <div style={{ fontWeight: 600, marginBottom: 4, color: T.ink, display: "flex", alignItems: "center", gap: 8 }}>
-          <Upload size={16} color={T.teal} /> Upload a report or discharge summary
+        <div style={{ fontWeight: 600, marginBottom: 14, color: T.ink }}>Allergies</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          <input style={inputStyle} value={tagInput.allergies} onChange={(e) => setTagInput((t) => ({ ...t, allergies: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && addTag("allergies")} placeholder="e.g. Penicillin" />
+          <GhostButton icon={Plus} onClick={() => addTag("allergies")} style={{ padding: "9px 12px" }}>Add</GhostButton>
         </div>
-        <p style={{ fontSize: 13, color: T.inkSoft, margin: "6px 0 14px" }}>The AI will extract diagnoses, medications, abnormal values, and suggested follow-up questions.</p>
-        <div style={{ border: `1.5px dashed ${T.line}`, borderRadius: 12, padding: "26px 16px", textAlign: "center", color: T.inkSoft, fontSize: 13.5 }}>
-          <FileText size={22} style={{ marginBottom: 8, opacity: 0.6 }} />
-          <div>Drag a PDF, lab report, or discharge summary here, or click to browse.</div>
-          <div style={{ fontSize: 11.5, marginTop: 6, opacity: 0.7 }}>(Demo — file processing isn't wired up in this prototype.)</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {(profile.allergies || []).map((a, i) => (
+            <span key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: `${T.red}14`, color: T.red, padding: "5px 10px", borderRadius: 999, fontSize: 12.5, fontWeight: 600 }}>
+              {a} <X size={12} style={{ cursor: "pointer" }} onClick={() => removeTag("allergies", i)} />
+            </span>
+          ))}
+          {!(profile.allergies || []).length && <span style={{ fontSize: 13, color: T.inkSoft }}>No known allergies added.</span>}
+        </div>
+
+        <div style={{ fontWeight: 600, margin: "20px 0 14px", color: T.ink }}>Chronic conditions</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          <input style={inputStyle} value={tagInput.conditions} onChange={(e) => setTagInput((t) => ({ ...t, conditions: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && addTag("conditions")} placeholder="e.g. Asthma" />
+          <GhostButton icon={Plus} onClick={() => addTag("conditions")} style={{ padding: "9px 12px" }}>Add</GhostButton>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {(profile.conditions || []).map((a, i) => (
+            <span key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: `${T.blue}14`, color: T.blue, padding: "5px 10px", borderRadius: 999, fontSize: 12.5, fontWeight: 600 }}>
+              {a} <X size={12} style={{ cursor: "pointer" }} onClick={() => removeTag("conditions", i)} />
+            </span>
+          ))}
+          {!(profile.conditions || []).length && <span style={{ fontSize: 13, color: T.inkSoft }}>None added.</span>}
         </div>
       </Card>
     </div>
@@ -1193,11 +1576,39 @@ const MOBILE_NAV_KEYS = ["home", "symptom", "timeline", "appointments", "profile
 const LANGS = ["English", "Español", "Français", "हिन्दी", "ગુજરાતી", "中文"];
 
 export default function App() {
-  const [page, setPage] = useState("home");
+  const initialToken = typeof window !== "undefined" ? localStorage.getItem("AUTH_TOKEN") || localStorage.getItem("authToken") : "";
+  const [page, setPage] = useState(initialToken ? "home" : "login");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [lang, setLang] = useState("English");
-  const [profile, setProfile] = useState({ name: "Jordan Ellis", age: "34", sex: "Female", allergies: ["Penicillin"], conditions: ["Asthma"] });
+  const [profile, setProfile] = useState({
+    name: "Jordan Ellis",
+    email: "jordan.ellis@example.com",
+    phoneNumber: "(415) 555-0124",
+    profilePhotoPath: "",
+    dateOfBirth: "1990-04-23",
+    age: "34",
+    gender: "Female",
+    bloodType: "O+",
+    height: "170",
+    weight: "68",
+    insuranceProvider: "HealthFirst",
+    emergencyContact: "Alex Ellis — (415) 555-0146",
+    address: "120 Market St, San Francisco, CA",
+    country: "USA",
+    preferredLanguage: "English",
+    allergies: ["Penicillin"],
+    conditions: ["Asthma"],
+  });
+  const [dashboardData, setDashboardData] = useState(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [authToken, setAuthToken] = useState(initialToken);
+  const [authUser, setAuthUser] = useState(null);
+  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
+  const [deleteAccountModalOpen, setDeleteAccountModalOpen] = useState(false);
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState("");
+  const [deleteAccountError, setDeleteAccountError] = useState("");
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 860 : false);
+  const avatarInputRef = useRef(null);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 860);
@@ -1205,12 +1616,170 @@ export default function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  useEffect(() => {
+    if (!authToken) {
+      setDashboardData(null);
+      setAuthUser(null);
+      setAvatarMenuOpen(false);
+      return;
+    }
+
+    async function loadDashboard() {
+      setDashboardLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/dashboard`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (!res.ok) throw new Error("Unable to load dashboard.");
+        const data = await res.json();
+        setDashboardData(data.dashboard);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setDashboardLoading(false);
+      }
+    }
+
+    async function loadProfile() {
+      try {
+        const res = await fetch(`${API_BASE}/profile`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (!res.ok) throw new Error("Unable to load profile.");
+        const data = await res.json();
+        const profileData = {
+          name: data.profile.full_name || data.profile.fullName || data.profile.name || profile.name,
+          email: data.profile.email || profile.email,
+          phoneNumber: data.profile.phone_number || data.profile.phoneNumber || profile.phoneNumber,
+          profilePhotoPath: data.profile.profile_photo_path || data.profile.profilePhotoPath || profile.profilePhotoPath,
+          dateOfBirth: data.profile.date_of_birth || data.profile.dateOfBirth || profile.dateOfBirth,
+          age: data.profile.age || profile.age,
+          gender: data.profile.sex || data.profile.gender || profile.gender,
+          bloodType: data.profile.blood_type || data.profile.bloodType || profile.bloodType,
+          height: data.profile.height_cm || data.profile.height || profile.height,
+          weight: data.profile.weight_kg || data.profile.weight || profile.weight,
+          insuranceProvider: data.profile.insurance_provider || data.profile.insuranceProvider || profile.insuranceProvider,
+          emergencyContact: data.profile.emergency_contact || data.profile.emergencyContact || profile.emergencyContact,
+          address: data.profile.address || profile.address,
+          country: data.profile.country || profile.country,
+          preferredLanguage: data.profile.preferred_language || data.profile.preferredLanguage || profile.preferredLanguage,
+          allergies: data.allergies || profile.allergies,
+          conditions: data.conditions || profile.conditions,
+        };
+
+        setProfile((p) => ({ ...p, ...profileData }));
+        setAuthUser({ name: profileData.name, email: profileData.email });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    loadDashboard();
+    loadProfile();
+  }, [authToken]);
+
+  const uploadProfilePhoto = async (file) => {
+    const formData = new FormData();
+    formData.append("photo", file);
+
+    const response = await fetch(`${API_BASE}/profile/photo`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Unable to upload photo.");
+    }
+
+    const data = await response.json();
+    setProfile((p) => ({ ...p, profilePhotoPath: data.profilePhotoPath }));
+    setAvatarMenuOpen(false);
+    return data;
+  };
+
+  const removeProfilePhoto = async () => {
+    const response = await fetch(`${API_BASE}/profile`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ profilePhotoPath: "" }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Unable to remove profile photo.");
+    }
+    setProfile((p) => ({ ...p, profilePhotoPath: "" }));
+    setAvatarMenuOpen(false);
+  };
+
   const go = (key) => { setPage(key); setMobileOpen(false); };
+  const isLoggedIn = Boolean(authToken);
+  
+  const logout = async () => {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+    setAuthToken("");
+    setAuthUser(null);
+    localStorage.removeItem("AUTH_TOKEN");
+    setDashboardData(null);
+    setPage("login");
+  };
+
+  const deleteAccount = async () => {
+    setDeleteAccountError("");
+    if (!deleteAccountPassword.trim()) {
+      setDeleteAccountError("Password is required.");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/account`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ password: deleteAccountPassword }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to delete account.");
+      }
+
+      setDeleteAccountModalOpen(false);
+      setDeleteAccountPassword("");
+      logout();
+    } catch (err) {
+      setDeleteAccountError(err.message || "An error occurred.");
+    }
+  };
+
+  useEffect(() => {
+    if (!authToken) {
+      setPage("login");
+    }
+  }, [authToken]);
 
   const pageMap = {
-    home: <HomePage go={go} profile={profile} />,
+    home: <HomePage go={go} profile={profile} dashboard={dashboardData} loadingDashboard={dashboardLoading} authToken={authToken} />,
+    login: <LoginPage onLogin={(token, user) => { setAuthToken(token); setAuthUser(user); localStorage.setItem("AUTH_TOKEN", token); setPage("home"); }} />,
     symptom: <SymptomCheck go={go} />,
-    profile: <ProfilePage profile={profile} setProfile={setProfile} />,
+    profile: <ProfilePage profile={profile} setProfile={setProfile} uploadPhoto={uploadProfilePhoto} removePhoto={removeProfilePhoto} />,
     timeline: <TimelinePage />,
     appointments: <AppointmentPrep />,
     doctors: <DoctorFinder />,
@@ -1238,12 +1807,80 @@ export default function App() {
       `}</style>
 
       {/* Desktop sidebar */}
-      <aside className="desktop-sidebar" style={{ position: "fixed", top: 0, left: 0, bottom: 0, width: 236, background: T.tealDeep, padding: "26px 16px", display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "0 8px", marginBottom: 30 }}>
-          <div style={{ width: 30, height: 30, borderRadius: 8, background: T.clay, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <HeartPulse size={16} color="#fff" />
+      {isLoggedIn && (
+        <aside className="desktop-sidebar" style={{ position: "fixed", top: 0, left: 0, bottom: 0, width: 236, background: T.tealDeep, padding: "26px 16px", display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "0 8px", marginBottom: 30 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: T.clay, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <HeartPulse size={16} color="#fff" />
+            </div>
+            <span style={{ fontFamily: "Fraunces, serif", fontSize: 16.5, color: "#fff", fontWeight: 500 }}>MedPath AI</span>
           </div>
-          <span style={{ fontFamily: "Fraunces, serif", fontSize: 16.5, color: "#fff", fontWeight: 500 }}>MedPath AI</span>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+            <button
+              type="button"
+              onClick={() => setAvatarMenuOpen((open) => !open)}
+              style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer" }}
+            >
+              {profile.profilePhotoPath ? (
+                <img
+                  src={profile.profilePhotoPath}
+                  alt="User avatar"
+                  style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", border: `2px solid #fff` }}
+                />
+              ) : (
+                <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(255,255,255,0.16)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+                  <UserCircle size={30} />
+                </div>
+              )}
+            </button>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  await uploadProfilePhoto(file);
+                } catch (err) {
+                  console.error(err);
+                } finally {
+                  e.target.value = "";
+                }
+              }}
+            />
+            <div style={{ textAlign: "center", color: "rgba(255,255,255,0.9)", fontSize: 14 }}>
+              {profile.name || authUser?.name || "Your profile"}
+            </div>
+            {avatarMenuOpen && (
+              <div style={{ width: "100%", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 12, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  style={{ border: "1px solid rgba(255,255,255,0.2)", background: "transparent", color: "#fff", borderRadius: 8, padding: "8px 10px", cursor: "pointer", textAlign: "left" }}
+                >
+                  Change photo
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await removeProfilePhoto();
+                    } catch (err) {
+                      console.error(err);
+                    } finally {
+                      setAvatarMenuOpen(false);
+                    }
+                  }}
+                  style={{ border: "1px solid rgba(255,255,255,0.2)", background: "transparent", color: "#fff", borderRadius: 8, padding: "8px 10px", cursor: "pointer", textAlign: "left" }}
+                >
+                  Remove photo
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {NAV.map((n) => (
@@ -1268,20 +1905,37 @@ export default function App() {
               {LANGS.map((l) => <option key={l} style={{ color: "#000" }}>{l}</option>)}
             </select>
           </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+            <button
+              onClick={logout}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "transparent", color: "#fff", cursor: "pointer", fontWeight: 600 }}
+            >
+              Sign out
+            </button>
+            <button
+              onClick={() => setDeleteAccountModalOpen(true)}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,0,0,0.1)", color: "#ffb3b3", cursor: "pointer", fontWeight: 600, fontSize: 12.5 }}
+            >
+              Delete account
+            </button>
+          </div>
         </div>
       </aside>
+      )}
 
       {/* Mobile top bar */}
-      <div className="mobile-topbar" style={{ position: "sticky", top: 0, zIndex: 20, background: T.tealDeep, color: "#fff", padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 26, height: 26, borderRadius: 7, background: T.clay, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <HeartPulse size={14} color="#fff" />
+      {isLoggedIn && (
+        <div className="mobile-topbar" style={{ position: "sticky", top: 0, zIndex: 20, background: T.tealDeep, color: "#fff", padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 26, height: 26, borderRadius: 7, background: T.clay, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <HeartPulse size={14} color="#fff" />
+            </div>
+            <span style={{ fontFamily: "Fraunces, serif", fontSize: 15.5 }}>MedPath AI</span>
           </div>
-          <span style={{ fontFamily: "Fraunces, serif", fontSize: 15.5 }}>MedPath AI</span>
+          <Menu size={22} onClick={() => setMobileOpen((o) => !o)} style={{ cursor: "pointer" }} />
         </div>
-        <Menu size={22} onClick={() => setMobileOpen((o) => !o)} style={{ cursor: "pointer" }} />
-      </div>
-      {mobileOpen && (
+      )}
+      {mobileOpen && isLoggedIn && (
         <div className="mobile-topbar" style={{ background: T.tealDeep, padding: "6px 12px 14px" }}>
           {NAV.map((n) => (
             <button key={n.key} onClick={() => go(n.key)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 10px", background: page === n.key ? "rgba(255,255,255,0.12)" : "transparent", border: "none", borderRadius: 8, color: "#fff", fontSize: 14.5, cursor: "pointer", textAlign: "left" }}>
@@ -1297,13 +1951,55 @@ export default function App() {
       </main>
 
       {/* Mobile bottom tab bar */}
-      <div className="mobile-tabbar" style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: `1px solid ${T.line}`, display: "flex", justifyContent: "space-around", padding: "8px 4px", zIndex: 20 }}>
-        {NAV.filter((n) => MOBILE_NAV_KEYS.includes(n.key)).map((n) => (
-          <button key={n.key} onClick={() => go(n.key)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "transparent", border: "none", color: page === n.key ? T.teal : T.inkSoft, fontSize: 10.5, cursor: "pointer", padding: "4px 8px" }}>
-            <n.icon size={19} />{n.label.split(" ")[0]}
-          </button>
-        ))}
-      </div>
+      {isLoggedIn && (
+        <div className="mobile-tabbar" style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: `1px solid ${T.line}`, display: "flex", justifyContent: "space-around", padding: "8px 4px", zIndex: 20 }}>
+          {NAV.filter((n) => MOBILE_NAV_KEYS.includes(n.key)).map((n) => (
+            <button key={n.key} onClick={() => go(n.key)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "transparent", border: "none", color: page === n.key ? T.teal : T.inkSoft, fontSize: 10.5, cursor: "pointer", padding: "4px 8px" }}>
+              <n.icon size={19} />{n.label.split(" ")[0]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Delete account modal */}
+      {deleteAccountModalOpen && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 30 }}>
+          <div style={{ background: T.paperRaised, borderRadius: 16, padding: 28, maxWidth: 400, boxShadow: "0 12px 40px rgba(0,0,0,0.15)" }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: T.red, marginBottom: 12 }}>Delete account?</div>
+            <p style={{ fontSize: 14, color: T.inkSoft, marginBottom: 18, lineHeight: 1.6 }}>
+              This will permanently delete your account and all associated data. This action cannot be undone.
+            </p>
+            <input
+              type="password"
+              placeholder="Enter your password to confirm"
+              value={deleteAccountPassword}
+              onChange={(e) => setDeleteAccountPassword(e.target.value)}
+              style={{ width: "100%", border: `1px solid ${T.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, fontFamily: "Inter, sans-serif", boxSizing: "border-box", marginBottom: 12 }}
+            />
+            {deleteAccountError && (
+              <div style={{ fontSize: 13, color: T.red, marginBottom: 12 }}>{deleteAccountError}</div>
+            )}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => {
+                  setDeleteAccountModalOpen(false);
+                  setDeleteAccountPassword("");
+                  setDeleteAccountError("");
+                }}
+                style={{ padding: "10px 16px", borderRadius: 9, border: `1px solid ${T.line}`, background: "transparent", color: T.ink, cursor: "pointer", fontWeight: 600 }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={deleteAccount}
+                style={{ padding: "10px 16px", borderRadius: 9, border: "none", background: T.red, color: "#fff", cursor: "pointer", fontWeight: 600 }}
+              >
+                Delete account
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
