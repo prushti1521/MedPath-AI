@@ -43,11 +43,32 @@ A comprehensive healthcare management platform that guides patients through symp
 - **Multer** for file uploads
 - **Zod** for input validation
 
+### AI/ML Service
+- **Python 3.8+**
+- **FastAPI** for AI service API
+- **Uvicorn** ASGI server
+- **RAG (Retrieval-Augmented Generation)** for knowledge base
+- **OCR** capabilities for document processing
+
 ### Database
-- **PostgreSQL 18** with 20+ tables
+- **PostgreSQL 18** with pgcrypto extension
 - JSONB fields for flexible data storage
 - UUID primary keys
 - Timezone-aware timestamps (TIMESTAMPTZ)
+- 20+ optimized tables with composite indexes
+
+### DevOps & Deployment
+- **Docker** & **Docker Compose** for containerization
+- **Dockerfile** for both Node.js API and Python AI service
+- Environment-based configuration (.env)
+- Multi-container orchestration
+
+### Development Tools
+- **npm/yarn** for package management
+- **Vite** dev server with HMR (Hot Module Replacement)
+- **Nodemon** for auto-restart on file changes
+- **Git** for version control
+- **Postman/cURL** for API testing
 
 ## 📋 Prerequisites
 
