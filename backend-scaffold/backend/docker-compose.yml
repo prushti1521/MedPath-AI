@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: ankane/pgvector:latest
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: medical_navigator
+      POSTGRES_USER: navigator
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./node-api/src/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  node-api:
+    build: ./node-api
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DATABASE_URL: postgres://navigator:${POSTGRES_PASSWORD:-changeme}@postgres:5432/medical_navigator
+      JWT_SECRET: ${JWT_SECRET:-change_this_in_production}
+      AI_SERVICE_URL: http://ai-service:8000
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      PORT: 4000
+    ports:
+      - "4000:4000"
+
+  ai-service:
+    build: ./ai-service
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgres://navigator:${POSTGRES_PASSWORD:-changeme}@postgres:5432/medical_navigator
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:
