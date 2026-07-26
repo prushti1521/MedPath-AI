@@ -336,6 +336,7 @@ function LoginPage({ onLogin }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
+        credentials: "include",
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to sign in.");
@@ -360,6 +361,7 @@ function LoginPage({ onLogin }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, fullName: name }),
+        credentials: "include",
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to sign up.");
