@@ -133,36 +133,114 @@ The frontend will be available at `http://localhost:5173`
 
 ```
 MedPath-AI/
+├── frontend/                                    # React 19+ Vite Application (Port 5173-5179)
+│   ├── src/
+│   │   ├── App.jsx                             # Main application root with all page components
+│   │   │                                        # - LoginPage with authentication
+│   │   │                                        # - Dashboard with health overview
+│   │   │                                        # - SymptomCheck with multi-step questionnaire
+│   │   │                                        # - Timeline with health metrics visualization
+│   │   │                                        # - AppointmentPrep with checklists
+│   │   │                                        # - DoctorFinder with location search & demo data
+│   │   │                                        # - Medications with interaction checker
+│   │   │                                        # - AskAI for health education
+│   │   │                                        # - Profile with user data management
+│   │   │
+│   │   ├── main.jsx                            # React entry point
+│   │   └── global.css                          # Global styles with design tokens
+│   │
+│   ├── package.json                            # Frontend dependencies & scripts
+│   ├── vite.config.js                          # Vite bundler configuration
+│   └── index.html                              # HTML template
+│
 ├── backend-scaffold/
 │   └── backend/
-│       ├── node-api/                 # Express.js API server
+│       ├── node-api/                           # Express.js REST API (Port 4000)
 │       │   ├── src/
-│       │   │   ├── index.js          # Server entry point
+│       │   │   ├── index.js                    # Server entry point with middleware setup
+│       │   │   │
 │       │   │   ├── db/
-│       │   │   │   ├── pool.js       # PostgreSQL connection pool
-│       │   │   │   └── schema.sql    # Database schema
-│       │   │   └── routes/           # API endpoints
-│       │   │       ├── auth.routes.js
-│       │   │       ├── profile.routes.js
-│       │   │       ├── medications.routes.js
-│       │   │       ├── appointments.routes.js
-│       │   │       └── ...
-│       │   └── Dockerfile
-│       └── ai-service/               # Python AI service (optional)
-│           ├── main.py
-│           ├── triage.py
-│           ├── rag.py
-│           └── requirements.txt
-├── frontend/                         # React 19+ application
-│   ├── src/
-│   │   ├── App.jsx                  # Main app with routing
-│   │   └── pages/
-│   │       ├── LoginPage.jsx
-│   │       ├── Dashboard.jsx
-│   │       └── ...
-│   └── package.json
-└── README.md
+│       │   │   │   ├── pool.js                 # PostgreSQL connection pooling
+│       │   │   │   └── schema.sql              # Database schema (20+ tables)
+│       │   │   │
+│       │   │   ├── middleware/
+│       │   │   │   └── auth.js                 # JWT authentication middleware
+│       │   │   │
+│       │   │   ├── routes/                     # RESTful API endpoints
+│       │   │   │   ├── auth.routes.js          # POST /auth/register, /login, /logout
+│       │   │   │   ├── profile.routes.js       # GET/PATCH /profile, POST /profile/photo
+│       │   │   │   ├── medications.routes.js   # GET/POST/DELETE /medications
+│       │   │   │   ├── symptoms.routes.js      # POST /symptoms/check, GET /symptoms/timeline
+│       │   │   │   ├── appointments.routes.js  # GET/POST /appointments, /appointments/prep
+│       │   │   │   ├── providers.routes.js     # GET /providers/search, /nearby
+│       │   │   │   ├── prescriptions.routes.js # Prescription management
+│       │   │   │   ├── reminders.routes.js     # Medication reminders
+│       │   │   │   ├── reports.routes.js       # Medical report uploads
+│       │   │   │   ├── conversations.routes.js # Chat/consultation history
+│       │   │   │   ├── history.routes.js       # Login and activity audit trail
+│       │   │   │   └── dashboard.routes.js     # Dashboard metrics aggregation
+│       │   │   │
+│       │   │   ├── uploads/                    # User-uploaded files (photos, reports)
+│       │   │   └── .env                        # Environment variables
+│       │   │
+│       │   ├── package.json                    # Backend dependencies & scripts
+│       │   ├── Dockerfile                      # Container configuration for Node API
+│       │   └── node_modules/                   # Dependencies
+│       │
+│       ├── ai-service/                         # Python FastAPI AI Service (Port 8000)
+│       │   ├── main.py                         # FastAPI server entry point
+│       │   ├── triage.py                       # Symptom triage & urgency assessment
+│       │   ├── rag.py                          # Retrieval-Augmented Generation for KB
+│       │   ├── ocr.py                          # Optical Character Recognition for docs
+│       │   ├── interactions.py                 # Drug interaction checking
+│       │   ├── requirements.txt                # Python dependencies
+│       │   ├── Dockerfile                      # Container configuration for AI service
+│       │   └── __pycache__/                    # Python bytecode cache
+│       │
+│       ├── docker-compose.yml                  # Multi-container orchestration
+│       │                                        # - PostgreSQL 18 database
+│       │                                        # - Redis cache service
+│       │                                        # - Node API service
+│       │                                        # - Python AI service
+│       │
+│       └── README.md                           # Backend-specific documentation
+│
+├── MedicalJourneyNavigator.jsx                 # Legacy component (archived)
+├── .git/                                       # Git repository
+├── .gitignore                                  # Git ignore patterns
+└── README.md                                   # Project root documentation
+
 ```
+
+### Key Directory Details
+
+**Frontend (React + Vite)**
+- Monolithic `App.jsx` containing all pages and components
+- Client-side routing with page state management
+- Multi-language i18n support (6 languages)
+- Real-time data visualization with Recharts
+- Design token system for consistent styling
+
+**Backend (Node.js + Express)**
+- RESTful API with JWT authentication
+- PostgreSQL database with 20+ optimized tables
+- Middleware for auth, CORS, and error handling
+- File upload handling via Multer
+- Input validation with Zod
+
+**AI Service (Python + FastAPI)**
+- Symptom triage and urgency assessment
+- Drug interaction checking
+- RAG-based health knowledge retrieval
+- OCR for document processing
+- ASGI server via Uvicorn
+
+**Database (PostgreSQL 18)**
+- 20+ tables with composite indexes
+- JSONB fields for flexible data storage
+- UUID primary keys
+- Soft-delete pattern for compliance
+- Login history and audit trails
 
 ## 🔌 API Endpoints
 
