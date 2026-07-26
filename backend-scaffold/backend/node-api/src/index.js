@@ -20,7 +20,6 @@ dotenv.config();
 
 const app = express();
 
-app.use(helmet());
 const allowedOrigins = [
   "https://medpath-ai-frontend-project.vercel.app",
   "http://localhost:5173",
@@ -31,6 +30,8 @@ const allowedOrigins = [
   "http://localhost:5179",
   ...(process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",").map(o => o.trim()) : [])
 ];
+
+// CORS must run before helmet to allow cross-origin requests
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
@@ -38,6 +39,8 @@ app.use(cors({
   },
   credentials: true,
 }));
+
+app.use(helmet());
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static("src/uploads"));
 
