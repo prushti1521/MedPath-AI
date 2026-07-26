@@ -1100,6 +1100,15 @@ function AppointmentPrep() {
 /* ---------------------------------------------------------------
   DOCTOR FINDER
 ----------------------------------------------------------------*/
+// Demo fallback data for healthcare locations (when APIs fail)
+const DEMO_HEALTHCARE_LOCATIONS = [
+  { id: 'demo-1', name: 'St. Mary Medical Center', type: 'hospital', lat: 37.7749, lon: -122.4194, distance: 0.5 * 1609, phone: '(415) 555-0100', website: 'stmarymedical.com' },
+  { id: 'demo-2', name: 'Urgent Care Clinic', type: 'clinic', lat: 37.7759, lon: -122.4164, distance: 0.8 * 1609, phone: '(415) 555-0101', website: 'urgentclinic.com' },
+  { id: 'demo-3', name: 'Downtown Pharmacy Plus', type: 'pharmacy', lat: 37.7799, lon: -122.4094, distance: 1.2 * 1609, phone: '(415) 555-0102', website: 'pharmacyplus.com' },
+  { id: 'demo-4', name: 'City Diagnostic Lab', type: 'laboratory', lat: 37.7729, lon: -122.4224, distance: 1.5 * 1609, phone: '(415) 555-0103', website: 'citylab.com' },
+  { id: 'demo-5', name: 'Dr. Johnson Family Medicine', type: 'doctor', lat: 37.7869, lon: -122.4064, distance: 1.8 * 1609, phone: '(415) 555-0104', website: 'drjohnson.com' },
+];
+
 // Helper: distance in meters between two lat/lon
 function haversine(lat1, lon1, lat2, lon2) {
   const toRad = (v) => (v * Math.PI) / 180;
@@ -1121,6 +1130,7 @@ function DoctorFinder() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [useGoogle, setUseGoogle] = useState(false);
+  const [showApiInput, setShowApiInput] = useState(false);
   const [googleKey, setGoogleKey] = useState(() => {
     try { return localStorage.getItem('VITE_GOOGLE_PLACES_KEY') || import.meta.env.VITE_GOOGLE_PLACES_KEY || ''; } catch { return ''; }
   });
@@ -1146,9 +1156,9 @@ function DoctorFinder() {
       if (useGoogle && googleKey) {
         return await fetchNearbyGoogle(lat, lon, rad);
       }
-      // Overpass QL: search common healthcare amenities
+      // Overpass QL: search common healthcare amenities with shorter timeout
       const q = `
-        [out:json][timeout:25];
+        [out:json][timeout:15];
         (
           node(around:${rad},${lat},${lon})[amenity~"hospital|clinic|pharmacy|urgent_care|laboratory|doctors|healthcare|medical_center"];
           way(around:${rad},${lat},${lon})[amenity~"hospital|clinic|pharmacy|urgent_care|laboratory|doctors|healthcare|medical_center"];
@@ -1162,68 +1172,96 @@ function DoctorFinder() {
         "https://lz4.overpass-api.de/api/interpreter",
         "https://overpass.kumi.systems/api/interpreter",
       ];
+      
       let resp = null;
-      let lastText = "";
+      let lastError = "";
+      
+      // Try each endpoint with a 12-second timeout
       for (const ep of endpoints) {
         try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 12000);
+          
           resp = await fetch(ep, {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: new URLSearchParams({ data: q }).toString(),
+            signal: controller.signal,
           });
-          if (resp && resp.ok) break;
-          lastText = await (resp ? resp.text().catch(() => "") : Promise.resolve(""));
+          
+          clearTimeout(timeoutId);
+          
+          if (resp && resp.ok) {
+            const data = await resp.json();
+            const els = (data.elements || []).map((el) => {
+              const latp = el.lat || (el.center && el.center.lat);
+              const lonp = el.lon || (el.center && el.center.lon);
+              const tags = el.tags || {};
+              const distance = latp ? haversine(lat, lon, latp, lonp) : null;
+              return {
+                id: el.id,
+                name: tags.name || tags['operator'] || "(unnamed)",
+                type: (tags.amenity || tags.shop || tags.healthcare || "").toLowerCase(),
+                lat: latp,
+                lon: lonp,
+                phone: tags.phone || tags["contact:phone"] || null,
+                website: tags.website || (tags.url ? tags.url : null),
+                opening_hours: tags.opening_hours || null,
+                distance,
+                tags,
+              };
+            }).filter(p => p.lat && p.lon);
+
+            // de-duplicate by name+type+coords
+            const dedup = [];
+            const seen = new Set();
+            for (const p of els) {
+              const key = `${p.name}|${p.type}|${Math.round(p.lat*10000)}|${Math.round(p.lon*10000)}`;
+              if (!seen.has(key)) { seen.add(key); dedup.push(p); }
+            }
+
+            dedup.sort((a,b) => (a.distance||0) - (b.distance||0));
+            
+            if (dedup.length > 0) {
+              setPlaces(dedup);
+              setLoading(false);
+              return;
+            }
+            break; // API worked but no results, don't try other endpoints
+          }
+          lastError = `HTTP ${resp?.status || 'unknown'}`;
         } catch (e) {
-          lastText = String(e).slice(0,300);
+          lastError = String(e).slice(0, 100);
+          // Continue to next endpoint
         }
       }
-      if (!resp || !resp.ok) {
-        throw new Error(`Places lookup failed (tried Overpass mirrors): ${resp ? resp.status : 'no-response'} ${lastText}. If this keeps happening, enable Google Places or try again later.`);
-      }
-      const data = await resp.json();
-      const els = (data.elements || []).map((el) => {
-        const latp = el.lat || (el.center && el.center.lat);
-        const lonp = el.lon || (el.center && el.center.lon);
-        const tags = el.tags || {};
-        const distance = latp ? haversine(lat, lon, latp, lonp) : null;
-        return {
-          id: el.id,
-          name: tags.name || tags['operator'] || "(unnamed)",
-          type: (tags.amenity || tags.shop || tags.healthcare || "").toLowerCase(),
-          lat: latp,
-          lon: lonp,
-          phone: tags.phone || tags["contact:phone"] || null,
-          website: tags.website || (tags.url ? tags.url : null),
-          opening_hours: tags.opening_hours || null,
-          distance,
-          tags,
-        };
-      }).filter(p => p.lat && p.lon);
-
-      // de-duplicate by name+type+coords
-      const dedup = [];
-      const seen = new Set();
-      for (const p of els) {
-        const key = `${p.name}|${p.type}|${Math.round(p.lat*10000)}|${Math.round(p.lon*10000)}`;
-        if (!seen.has(key)) { seen.add(key); dedup.push(p); }
-      }
-
-      dedup.sort((a,b) => (a.distance||0) - (b.distance||0));
-      setPlaces(dedup);
-    } catch (e) {
-      // If Overpass failed and we have a Google key, try Google as a fallback
-      if (!useGoogle && googleKey) {
+      
+      // If Overpass failed, try Google fallback or use demo data
+      if (googleKey) {
         try {
           await fetchNearbyGoogle(lat, lon, rad);
           return;
         } catch (gerr) {
-          setError(String(e) + "; Google fallback failed: " + String(gerr));
-          setPlaces([]);
+          // Google also failed, use demo data
+          setError(`Overpass API unavailable (${lastError}). Showing demo results. Tip: Enable Google Places with an API key for real data.`);
+          const demoResults = DEMO_HEALTHCARE_LOCATIONS.filter(p => {
+            const dist = haversine(lat, lon, p.lat, p.lon);
+            return dist <= rad;
+          }).map(p => ({ ...p, distance: haversine(lat, lon, p.lat, p.lon) }))
+            .sort((a,b) => a.distance - b.distance);
+          setPlaces(demoResults);
           return;
         }
       }
-      setError(String(e));
-      setPlaces([]);
+      
+      // No Google key, use demo data
+      setError(`Overpass API unavailable (${lastError}). Showing demo results. Tip: Enable Google Places with an API key for real data.`);
+      const demoResults = DEMO_HEALTHCARE_LOCATIONS.filter(p => {
+        const dist = haversine(lat, lon, p.lat, p.lon);
+        return dist <= rad;
+      }).map(p => ({ ...p, distance: haversine(lat, lon, p.lat, p.lon) }))
+        .sort((a,b) => a.distance - b.distance);
+      setPlaces(demoResults);
     } finally {
       setLoading(false);
     }
@@ -1288,19 +1326,43 @@ function DoctorFinder() {
   }
 
   function startWatch() {
-    if (!navigator.geolocation) { setError("Geolocation not supported by this browser."); return; }
+    if (!navigator.geolocation) { 
+      setError("Geolocation not supported by this browser."); 
+      return; 
+    }
     setError("");
-    navigator.geolocation.getCurrentPosition((p) => {
-      const { latitude: lat, longitude: lon, accuracy } = p.coords;
-      setLoc({ lat, lon, accuracy });
-      fetchNearby(lat, lon, radius);
-    }, (err) => setError(err.message), { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 });
+    setPlaces([]);
+    setLoading(true);
+    
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        const { latitude: lat, longitude: lon, accuracy } = p.coords;
+        setLoc({ lat, lon, accuracy });
+        setError(""); // Clear any previous errors
+        fetchNearby(lat, lon, radius);
+      }, 
+      (err) => {
+        setError(`Geolocation error: ${err.message}. You can still use demo results or enter an address manually.`);
+        setLoading(false);
+      }, 
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 8000 }
+    );
 
-    const id = navigator.geolocation.watchPosition((p) => {
-      const { latitude: lat, longitude: lon, accuracy } = p.coords;
-      setLoc({ lat, lon, accuracy });
-      fetchNearby(lat, lon, radius);
-    }, (err) => setError(err.message), { enableHighAccuracy: true, maximumAge: 5000, distanceFilter: 10 });
+    const id = navigator.geolocation.watchPosition(
+      (p) => {
+        const { latitude: lat, longitude: lon, accuracy } = p.coords;
+        setLoc({ lat, lon, accuracy });
+        // Only refetch if distance has changed significantly
+        fetchNearby(lat, lon, radius);
+      }, 
+      (err) => {
+        // Don't overwrite error on watch failure if we already have location
+        if (!loc) {
+          setError(`Location watch error: ${err.message}`);
+        }
+      }, 
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 8000 }
+    );
 
     setWatchId(id);
   }
@@ -1334,25 +1396,64 @@ function DoctorFinder() {
           </div>
         </div>
         <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="checkbox" checked={useGoogle} onChange={(e)=>setUseGoogle(e.target.checked)} /> Use Google Places
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input 
+              type="checkbox" 
+              checked={useGoogle} 
+              onChange={(e) => {
+                setUseGoogle(e.target.checked);
+                setShowApiInput(e.target.checked && !googleKey);
+              }} 
+            /> 
+            Use Google Places
           </label>
-          {useGoogle && (
+          {(useGoogle || showApiInput) && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input placeholder="Google API key" value={googleKey} onChange={(e)=>setGoogleKey(e.target.value)} style={{ ...inputStyle, width: 320 }} />
-              <GhostButton onClick={()=>{ try{ localStorage.setItem('VITE_GOOGLE_PLACES_KEY', googleKey); setError('Saved key to localStorage'); }catch(e){ setError('Unable to save key'); }}}>Save key</GhostButton>
+              <input 
+                placeholder="Google API key" 
+                value={googleKey} 
+                onChange={(e) => setGoogleKey(e.target.value)} 
+                style={{ ...inputStyle, width: 320 }} 
+              />
+              <GhostButton onClick={() => {
+                try {
+                  localStorage.setItem('VITE_GOOGLE_PLACES_KEY', googleKey);
+                  setError('✓ API key saved to localStorage');
+                  setShowApiInput(false);
+                } catch (e) {
+                  setError('Unable to save key to localStorage');
+                }
+              }}>
+                Save key
+              </GhostButton>
             </div>
           )}
         </div>
         <div style={{ marginTop: 10, color: T.inkSoft }}>
-          {loc ? `Lat ${loc.lat.toFixed(5)}, Lon ${loc.lon.toFixed(5)} · accuracy ${Math.round(loc.accuracy)}m` : 'Location not yet available.'}
-          {error && <div style={{ color: T.red, marginTop: 8 }}>{error}</div>}
+          {loc ? (
+            <div>
+              <div style={{ fontWeight: 500, color: T.ink }}>📍 Location: {loc.lat.toFixed(4)}°N, {loc.lon.toFixed(4)}°W</div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>Accuracy: ±{Math.round(loc.accuracy)}m | Radius: {(radius/1609).toFixed(1)} mi</div>
+            </div>
+          ) : (
+            <div style={{ color: T.amber }}>📍 Click "Use my location" to find nearby healthcare providers</div>
+          )}
+          {error && <div style={{ color: T.red, marginTop: 8, fontSize: 13, display: 'flex', alignItems: 'flex-start', gap: 6 }}><span>⚠️</span> <span>{error}</span></div>}
         </div>
       </Card>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {loading && <Card>Searching nearby places…</Card>}
-        {!loading && filtered.length === 0 && <Card>No nearby results. Try increasing the radius or enabling location permission.</Card>}
+        {loading && <Card>🔍 Searching nearby places…</Card>}
+        {!loading && filtered.length === 0 && loc && <Card>No nearby results found. Try adjusting the search radius or type filter.</Card>}
+        {!loading && filtered.length === 0 && !loc && <Card>Enable location access to see nearby healthcare providers.</Card>}
+        {places.length > 0 && places.some(p => typeof p.id === 'string' && p.id.startsWith('demo-')) && (
+          <Card style={{ background: `${T.amber}10`, border: `1px solid ${T.amber}30`, borderRadius: 10 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: T.amber, fontSize: 13 }}>
+              <span>ℹ️</span>
+              <span><strong>Demo Results:</strong> Real location data unavailable. Replace with actual providers by enabling Google Places with an API key.</span>
+            </div>
+          </Card>
+        )}
         {filtered.map((p) => (
           <Card key={p.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -1360,14 +1461,14 @@ function DoctorFinder() {
                 <UserCircle size={22} color={T.teal} />
               </div>
               <div>
-                <div style={{ fontWeight: 700, color: T.ink }}>{p.name}</div>
+                <div style={{ fontWeight: 700, color: T.ink }}>{p.name} {typeof p.id === 'string' && p.id.startsWith('demo-') ? '(Demo)' : ''}</div>
                 <div style={{ fontSize: 13, color: T.inkSoft }}>{p.type || 'healthcare'} · {p.distance ? `${(p.distance/1609).toFixed(1)} mi` : '—'}</div>
-                <div style={{ fontSize: 13, color: T.inkSoft, marginTop: 6 }}>{p.opening_hours ? `Hours: ${p.opening_hours}` : ''}</div>
+                <div style={{ fontSize: 13, color: T.inkSoft, marginTop: 6 }}>{p.rating ? `⭐ ${p.rating} (${p.user_ratings_total} reviews)` : ''}{p.opening_hours ? `${p.rating ? ' · ' : ''}Hours: ${Array.isArray(p.opening_hours) ? p.opening_hours[0] : p.opening_hours}` : ''}</div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              {p.phone && <a href={`tel:${p.phone}`} style={{ color: T.tealDeep, fontWeight: 700 }}>{p.phone}</a>}
-              {p.website && <a href={p.website.startsWith('http')?p.website:`https://${p.website}`} target="_blank" rel="noreferrer">Website</a>}
+              {p.phone && <a href={`tel:${p.phone}`} style={{ color: T.tealDeep, fontWeight: 700, textDecoration: 'none' }}>{p.phone}</a>}
+              {p.website && <a href={p.website.startsWith('http')?p.website:`https://${p.website}`} target="_blank" rel="noreferrer" style={{ color: T.tealDeep, textDecoration: 'none' }}>Website</a>}
               <GhostButton icon={MapPin} onClick={()=>{
                 const url = `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}`;
                 window.open(url, '_blank');
@@ -1376,7 +1477,15 @@ function DoctorFinder() {
           </Card>
         ))}
       </div>
-      <p style={{ fontSize: 12, color: T.inkSoft, marginTop: 10 }}>Map and directions open in Google Maps. For full map embedding, integrate a map library such as Leaflet or Google Maps JS and provide an API key.</p>
+      <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 16, padding: 12, background: T.paper, borderRadius: 8 }}>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>💡 Tips:</div>
+        <ul style={{ margin: 0, paddingLeft: 20 }}>
+          <li>Enable <strong>Google Places</strong> with an API key for accurate, real-time results</li>
+          <li>Try different healthcare type filters (hospital, clinic, pharmacy, etc.)</li>
+          <li>Allow browser location access for the most accurate provider matches</li>
+          <li>Click <strong>Directions</strong> to open navigation in Google Maps</li>
+        </ul>
+      </div>
     </div>
   );
 }
