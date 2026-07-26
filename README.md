@@ -376,8 +376,6 @@ kill -9 <PID>
 - [ ] Voice-based symptom input
 - [ ] AI-powered treatment recommendations
 
-
-
 ---
 
 **GitHub**: https://github.com/prushti1521/MedPath-AI
