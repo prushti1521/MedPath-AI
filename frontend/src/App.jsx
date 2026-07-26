@@ -332,6 +332,7 @@ function LoginPage({ onLogin }) {
     setLoading(true);
     setError("");
     try {
+      // CORS: include credentials for cross-origin auth requests
       const response = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
