@@ -212,35 +212,6 @@ MedPath-AI/
 
 ```
 
-### Key Directory Details
-
-**Frontend (React + Vite)**
-- Monolithic `App.jsx` containing all pages and components
-- Client-side routing with page state management
-- Multi-language i18n support (6 languages)
-- Real-time data visualization with Recharts
-- Design token system for consistent styling
-
-**Backend (Node.js + Express)**
-- RESTful API with JWT authentication
-- PostgreSQL database with 20+ optimized tables
-- Middleware for auth, CORS, and error handling
-- File upload handling via Multer
-- Input validation with Zod
-
-**AI Service (Python + FastAPI)**
-- Symptom triage and urgency assessment
-- Drug interaction checking
-- RAG-based health knowledge retrieval
-- OCR for document processing
-- ASGI server via Uvicorn
-
-**Database (PostgreSQL 18)**
-- 20+ tables with composite indexes
-- JSONB fields for flexible data storage
-- UUID primary keys
-- Soft-delete pattern for compliance
-- Login history and audit trails
 
 ## 🔌 API Endpoints
 
@@ -405,23 +376,7 @@ kill -9 <PID>
 - [ ] Voice-based symptom input
 - [ ] AI-powered treatment recommendations
 
-## 📄 License
 
-This project is open source and available under the MIT License.
-
-## 👥 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📞 Support
-
-For support, please open an issue on the GitHub repository or contact the development team.
 
 ---
 
