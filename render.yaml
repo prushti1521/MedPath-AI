@@ -1,12 +1,9 @@
 services:
   - type: web
     name: medpath-api
-    env: node
+    env: docker
     plan: free
     region: oregon
-    rootDir: backend-scaffold/backend/node-api
-    buildCommand: npm install
-    startCommand: npm start
     envVars:
       - key: DATABASE_URL
         value: postgresql://medpath_ai_user:0xpiIEJp7K6JBvPbsBqkmQShUodCfroD@dpg-d9iqrvnaqgkc73ah7lf0-a/medpath_ai
