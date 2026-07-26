@@ -21,7 +21,16 @@ dotenv.config();
 const app = express();
 
 app.use(helmet());
-app.use(cors({ origin: process.env.CORS_ORIGIN?.split(",") || "*" }));
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",").map(o => o.trim())
+  : ["https://medpath-ai-frontend-project.vercel.app"];
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error("CORS: origin not allowed"));
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static("src/uploads"));
 

@@ -14,6 +14,6 @@ services:
       - key: PORT
         value: "4000"
       - key: CORS_ORIGIN
-        value: https://medpath-ai.vercel.app
+        value: https://medpath-ai-frontend-project.vercel.app
       - key: LOG_QUERIES
         value: "false"
