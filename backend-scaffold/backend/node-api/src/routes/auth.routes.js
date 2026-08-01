@@ -12,32 +12,36 @@ const registerSchema = z.object({
   fullName: z.string().min(1).optional(),
 });
 
-router.post("/register", async (req, res) => {
-  const parsed = registerSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.errors[0].message });
+router.post("/register", async (req, res, next) => {
+  try {
+    const parsed = registerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0].message });
+    }
+    const { email, password, fullName } = parsed.data;
+
+    const existing = await query("SELECT id FROM users WHERE email = $1", [email]);
+    if (existing.rowCount > 0) {
+      return res.status(409).json({ error: "An account with that email already exists." });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const userResult = await query(
+      "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, role",
+      [email, passwordHash]
+    );
+    const user = userResult.rows[0];
+
+    await query("INSERT INTO medical_profiles (user_id, full_name) VALUES ($1, $2)", [
+      user.id,
+      fullName || null,
+    ]);
+
+    const token = signToken(user);
+    res.status(201).json({ token, user });
+  } catch (err) {
+    next(err);
   }
-  const { email, password, fullName } = parsed.data;
-
-  const existing = await query("SELECT id FROM users WHERE email = $1", [email]);
-  if (existing.rowCount > 0) {
-    return res.status(409).json({ error: "An account with that email already exists." });
-  }
-
-  const passwordHash = await bcrypt.hash(password, 12);
-  const userResult = await query(
-    "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, role",
-    [email, passwordHash]
-  );
-  const user = userResult.rows[0];
-
-  await query("INSERT INTO medical_profiles (user_id, full_name) VALUES ($1, $2)", [
-    user.id,
-    fullName || null,
-  ]);
-
-  const token = signToken(user);
-  res.status(201).json({ token, user });
 });
 
 const loginSchema = z.object({
@@ -45,7 +49,8 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", async (req, res, next) => {
+  try {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Email and password are required." });
@@ -79,67 +84,78 @@ router.post("/login", async (req, res) => {
 
   const token = signToken(user);
   res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
-});
-
-router.post("/logout", async (req, res) => {
-  // Logout is optional in JWT flow, but we can log it for security audit
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return res.status(400).json({ error: "No auth token provided." });
-  }
-
-  const token = authHeader.replace("Bearer ", "");
-  let userId;
-
-  try {
-    const decoded = JSON.parse(Buffer.from(token.split(".")[1], "base64").toString());
-    userId = decoded.id;
   } catch (err) {
-    return res.status(401).json({ error: "Invalid token." });
+    next(err);
   }
-
-  // Update the most recent login session's logout time
-  await query(
-    "UPDATE login_history SET logout_at = now() WHERE id = (SELECT id FROM login_history WHERE user_id = $1 AND logout_at IS NULL ORDER BY login_at DESC LIMIT 1)",
-    [userId]
-  );
-
-  res.json({ message: "Logged out successfully." });
 });
 
-router.delete("/account", async (req, res) => {
-  // Requires auth — will add middleware check
-  if (!req.user) {
-    return res.status(401).json({ error: "Not authenticated." });
+router.post("/logout", async (req, res, next) => {
+  try {
+    // Logout is optional in JWT flow, but we can log it for security audit
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(400).json({ error: "No auth token provided." });
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    let userId;
+
+    try {
+      const decoded = JSON.parse(Buffer.from(token.split(".")[1], "base64").toString());
+      userId = decoded.id;
+    } catch (err) {
+      return res.status(401).json({ error: "Invalid token." });
+    }
+
+    // Update the most recent login session's logout time
+    await query(
+      "UPDATE login_history SET logout_at = now() WHERE id = (SELECT id FROM login_history WHERE user_id = $1 AND logout_at IS NULL ORDER BY login_at DESC LIMIT 1)",
+      [userId]
+    );
+
+    res.json({ message: "Logged out successfully." });
+  } catch (err) {
+    next(err);
   }
+});
 
-  const { password } = req.body;
-  if (!password) {
-    return res.status(400).json({ error: "Password is required to delete account." });
+router.delete("/account", async (req, res, next) => {
+  try {
+    // Requires auth — will add middleware check
+    if (!req.user) {
+      return res.status(401).json({ error: "Not authenticated." });
+    }
+
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({ error: "Password is required to delete account." });
+    }
+
+    // Verify password before deletion
+    const userResult = await query(
+      "SELECT password_hash FROM users WHERE id = $1 AND is_deleted = false",
+      [req.user.id]
+    );
+
+    if (!userResult.rowCount) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const valid = await bcrypt.compare(password, userResult.rows[0].password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: "Incorrect password." });
+    }
+
+    // Soft delete account
+    await query(
+      "UPDATE users SET is_deleted = true, deleted_at = now(), updated_at = now() WHERE id = $1",
+      [req.user.id]
+    );
+
+    res.json({ message: "Account deleted successfully. Your data has been archived." });
+  } catch (err) {
+    next(err);
   }
-
-  // Verify password before deletion
-  const userResult = await query(
-    "SELECT password_hash FROM users WHERE id = $1 AND is_deleted = false",
-    [req.user.id]
-  );
-
-  if (!userResult.rowCount) {
-    return res.status(404).json({ error: "User not found." });
-  }
-
-  const valid = await bcrypt.compare(password, userResult.rows[0].password_hash);
-  if (!valid) {
-    return res.status(401).json({ error: "Incorrect password." });
-  }
-
-  // Soft delete account
-  await query(
-    "UPDATE users SET is_deleted = true, deleted_at = now(), updated_at = now() WHERE id = $1",
-    [req.user.id]
-  );
-
-  res.json({ message: "Account deleted successfully. Your data has been archived." });
 });
 
 export default router;

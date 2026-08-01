@@ -18,6 +18,11 @@ import conversationsRoutes from "./routes/conversations.routes.js";
 
 dotenv.config();
 
+// Prevent unhandled promise rejections from crashing the server
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled Rejection:", reason);
+});
+
 const app = express();
 
 const allowedOrigins = [

@@ -11,7 +11,7 @@ export const pool = new pg.Pool({
 
 pool.on("error", (err) => {
   console.error("Unexpected error on idle Postgres client", err);
-  process.exit(1);
+  // Do not exit — let the pool recover and re-establish connections
 });
 
 export async function query(text, params) {
