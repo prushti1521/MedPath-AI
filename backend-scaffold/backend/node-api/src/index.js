@@ -98,26 +98,6 @@ app.get("/db-health", async (req, res) => {
   }
 });
 
-// One-time admin: reset a user password — protected by ADMIN_SECRET env var
-app.post("/admin/reset-password", async (req, res) => {
-  const secret = process.env.ADMIN_SECRET;
-  if (!secret || req.headers["x-admin-secret"] !== secret) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-  const { email, newPassword } = req.body;
-  if (!email || !newPassword) return res.status(400).json({ error: "email and newPassword required" });
-  try {
-    const bcrypt = await import("bcrypt");
-    const { pool } = await import("./db/pool.js");
-    const hash = await bcrypt.default.hash(newPassword, 12);
-    const r = await pool.query("UPDATE users SET password_hash=$1, updated_at=now() WHERE email=$2 RETURNING id, email", [hash, email]);
-    if (r.rowCount === 0) return res.status(404).json({ error: "User not found" });
-    res.json({ ok: true, user: r.rows[0] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 app.use("/auth", authRoutes);
 app.use("/profile", profileRoutes);
 app.use("/symptoms", symptomsRoutes);
