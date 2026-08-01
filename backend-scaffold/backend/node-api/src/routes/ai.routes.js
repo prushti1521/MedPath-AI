@@ -16,50 +16,93 @@ Rules:
 - If the question is unrelated to health or medicine, politely redirect to health topics.`;
 
 router.post("/chat", async (req, res) => {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return res.status(503).json({ error: "AI service not configured. Please add an ANTHROPIC_API_KEY to the server environment." });
-  }
+  // Support both Groq (free) and Anthropic. Groq is tried first if key present.
+  const groqKey = process.env.GROQ_API_KEY;
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
   const { messages } = req.body;
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: "messages array is required." });
   }
 
-  try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 1000,
-        system: SYSTEM_PROMPT,
-        messages,
-      }),
-    });
+  // Try Groq first (free tier available)
+  if (groqKey) {
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${groqKey}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          max_tokens: 1000,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            ...messages,
+          ],
+        }),
+      });
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      console.error("Anthropic API error:", err);
-      return res.status(response.status).json({ error: err?.error?.message || "AI request failed." });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        console.error("Groq API error:", err);
+        // Fall through to Anthropic if available
+        if (!anthropicKey) {
+          return res.status(response.status).json({ error: err?.error?.message || "AI request failed." });
+        }
+      } else {
+        const data = await response.json();
+        const text = data.choices?.[0]?.message?.content?.trim() || "I wasn't able to generate a response.";
+        return res.json({ text });
+      }
+    } catch (err) {
+      console.error("Groq error:", err);
+      if (!anthropicKey) {
+        return res.status(502).json({ error: "Could not reach the AI service. Please try again." });
+      }
     }
-
-    const data = await response.json();
-    const text = (data.content || [])
-      .map((block) => (block.type === "text" ? block.text : ""))
-      .filter(Boolean)
-      .join("\n")
-      .trim();
-
-    res.json({ text });
-  } catch (err) {
-    console.error("AI chat error:", err);
-    res.status(502).json({ error: "Could not reach the AI service. Please try again." });
   }
+
+  // Fall back to Anthropic
+  if (anthropicKey) {
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 1000,
+          system: SYSTEM_PROMPT,
+          messages,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        console.error("Anthropic API error:", err);
+        return res.status(response.status).json({ error: err?.error?.message || "AI request failed." });
+      }
+
+      const data = await response.json();
+      const text = (data.content || [])
+        .map((block) => (block.type === "text" ? block.text : ""))
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+
+      return res.json({ text });
+    } catch (err) {
+      console.error("AI chat error:", err);
+      return res.status(502).json({ error: "Could not reach the AI service. Please try again." });
+    }
+  }
+
+  return res.status(503).json({ error: "AI service not configured. Add GROQ_API_KEY (free at console.groq.com) or ANTHROPIC_API_KEY to the server environment." });
 });
 
 // Overpass API proxy — avoids browser CORS/rate-limit issues
