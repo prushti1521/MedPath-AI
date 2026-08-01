@@ -32,28 +32,31 @@ const upload = multer({
 const router = Router();
 router.use(requireAuth);
 
-router.get("/", async (req, res) => {
-  const profile = await query(
-    `SELECT p.*, u.email FROM medical_profiles p
-     JOIN users u ON u.id = p.user_id
-     WHERE p.user_id = $1`,
-    [req.user.id]
-  );
-  const allergies = await query(
-    `SELECT a.* FROM allergies a JOIN medical_profiles p ON a.profile_id = p.id WHERE p.user_id = $1`,
-    [req.user.id]
-  );
-  const conditions = await query(
-    `SELECT c.* FROM chronic_conditions c JOIN medical_profiles p ON c.profile_id = p.id WHERE p.user_id = $1`,
-    [req.user.id]
-  );
+router.get("/", async (req, res, next) => {
+  try {
+    const profile = await query(
+      `SELECT p.*, u.email FROM medical_profiles p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.user_id = $1`,
+      [req.user.id]
+    );
+    const allergies = await query(
+      `SELECT a.* FROM allergies a JOIN medical_profiles p ON a.profile_id = p.id WHERE p.user_id = $1`,
+      [req.user.id]
+    );
+    const conditions = await query(
+      `SELECT c.* FROM chronic_conditions c JOIN medical_profiles p ON c.profile_id = p.id WHERE p.user_id = $1`,
+      [req.user.id]
+    );
 
-  if (!profile.rowCount) return res.status(404).json({ error: "Profile not found." });
+    if (!profile.rowCount) return res.status(404).json({ error: "Profile not found." });
 
-  res.json({ profile: profile.rows[0], allergies: allergies.rows, conditions: conditions.rows });
+    res.json({ profile: profile.rows[0], allergies: allergies.rows, conditions: conditions.rows });
+  } catch (err) { next(err); }
 });
 
-router.patch("/", async (req, res) => {
+router.patch("/", async (req, res, next) => {
+  try {
   const {
     fullName,
     email,
@@ -123,42 +126,49 @@ router.patch("/", async (req, res) => {
   if (!result.rowCount) return res.status(404).json({ error: "Profile not found." });
 
   res.json({ profile: result.rows[0] });
+  } catch (err) { next(err); }
 });
 
-router.post("/photo", upload.single("photo"), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "Photo file is required." });
+router.post("/photo", upload.single("photo"), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "Photo file is required." });
 
-  const profile = await query("SELECT id FROM medical_profiles WHERE user_id = $1", [req.user.id]);
-  if (!profile.rowCount) return res.status(404).json({ error: "Profile not found." });
+    const profile = await query("SELECT id FROM medical_profiles WHERE user_id = $1", [req.user.id]);
+    if (!profile.rowCount) return res.status(404).json({ error: "Profile not found." });
 
-  const profilePhotoPath = `/uploads/${req.file.filename}`;
-  const result = await query(
-    "UPDATE medical_profiles SET profile_photo_path = $1, updated_at = now() WHERE user_id = $2 RETURNING profile_photo_path",
-    [profilePhotoPath, req.user.id]
-  );
+    const profilePhotoPath = `/uploads/${req.file.filename}`;
+    const result = await query(
+      "UPDATE medical_profiles SET profile_photo_path = $1, updated_at = now() WHERE user_id = $2 RETURNING profile_photo_path",
+      [profilePhotoPath, req.user.id]
+    );
 
-  res.json({ profilePhotoPath: result.rows[0].profile_photo_path });
+    res.json({ profilePhotoPath: result.rows[0].profile_photo_path });
+  } catch (err) { next(err); }
 });
 
-router.post("/allergies", async (req, res) => {
-  const { substance, reaction, severity } = req.body;
-  if (!substance) return res.status(400).json({ error: "Substance is required." });
+router.post("/allergies", async (req, res, next) => {
+  try {
+    const { substance, reaction, severity } = req.body;
+    if (!substance) return res.status(400).json({ error: "Substance is required." });
 
-  const profile = await query("SELECT id FROM medical_profiles WHERE user_id = $1", [req.user.id]);
-  const inserted = await query(
-    "INSERT INTO allergies (profile_id, substance, reaction, severity) VALUES ($1, $2, $3, $4) RETURNING *",
-    [profile.rows[0].id, substance, reaction || null, severity || null]
-  );
-  res.status(201).json({ allergy: inserted.rows[0] });
+    const profile = await query("SELECT id FROM medical_profiles WHERE user_id = $1", [req.user.id]);
+    const inserted = await query(
+      "INSERT INTO allergies (profile_id, substance, reaction, severity) VALUES ($1, $2, $3, $4) RETURNING *",
+      [profile.rows[0].id, substance, reaction || null, severity || null]
+    );
+    res.status(201).json({ allergy: inserted.rows[0] });
+  } catch (err) { next(err); }
 });
 
-router.delete("/allergies/:id", async (req, res) => {
-  await query(
-    `DELETE FROM allergies a USING medical_profiles p
-     WHERE a.id = $1 AND a.profile_id = p.id AND p.user_id = $2`,
-    [req.params.id, req.user.id]
-  );
-  res.status(204).send();
+router.delete("/allergies/:id", async (req, res, next) => {
+  try {
+    await query(
+      `DELETE FROM allergies a USING medical_profiles p
+       WHERE a.id = $1 AND a.profile_id = p.id AND p.user_id = $2`,
+      [req.params.id, req.user.id]
+    );
+    res.status(204).send();
+  } catch (err) { next(err); }
 });
 
 export default router;

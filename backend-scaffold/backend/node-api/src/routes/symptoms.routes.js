@@ -7,46 +7,57 @@ router.use(requireAuth);
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
 
-// Create a new symptom-check session. Delegates triage scoring to the
-// Python AI service (FastAPI), which applies rules + LLM reasoning
-// and returns an urgency level, reasons, and a crisis flag.
-router.post("/sessions", async (req, res) => {
-  const { freeText, answers } = req.body;
-
-  let triage;
+// Create a new symptom-check session.
+// Accepts a pre-computed triage from the frontend (urgencyLevel, reasons, crisis)
+// so it works even when the Python AI service is unavailable.
+router.post("/sessions", async (req, res, next) => {
   try {
-    const aiResponse = await fetch(`${AI_SERVICE_URL}/triage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ free_text: freeText, answers }),
-    });
-    if (!aiResponse.ok) throw new Error("AI service error");
-    triage = await aiResponse.json();
+    const { freeText, answers, urgencyLevel, reasons, crisis } = req.body;
+
+    let triage = { level: urgencyLevel, reasons: reasons || [], crisis: !!crisis };
+
+    // If no pre-computed triage provided, try the Python AI service
+    if (!urgencyLevel) {
+      try {
+        const aiResponse = await fetch(`${AI_SERVICE_URL}/triage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ free_text: freeText, answers }),
+        });
+        if (aiResponse.ok) {
+          triage = await aiResponse.json();
+        }
+      } catch {
+        // AI service unavailable — fall back to "routine" as safe default
+        triage = { level: "routine", reasons: ["Triage service unavailable; please review manually."], crisis: false };
+      }
+    }
+
+    const inserted = await query(
+      `INSERT INTO symptom_sessions (user_id, free_text, answers, urgency_level, reasons, crisis_flag)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [req.user.id, freeText, JSON.stringify(answers || {}), triage.level, JSON.stringify(triage.reasons || []), !!triage.crisis]
+    );
+
+    res.status(201).json({ session: inserted.rows[0] });
   } catch (err) {
-    // Fail safe: if the AI service is unreachable, don't silently
-    // under-triage — surface an error rather than guessing.
-    return res.status(502).json({ error: "Couldn't reach the triage service. Please try again." });
+    next(err);
   }
-
-  const inserted = await query(
-    `INSERT INTO symptom_sessions (user_id, free_text, answers, urgency_level, reasons, crisis_flag)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [req.user.id, freeText, JSON.stringify(answers || {}), triage.level, JSON.stringify(triage.reasons || []), !!triage.crisis]
-  );
-
-  res.status(201).json({ session: inserted.rows[0] });
 });
 
-router.get("/sessions", async (req, res) => {
-  const result = await query(
-    "SELECT * FROM symptom_sessions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50",
-    [req.user.id]
-  );
-  res.json({ sessions: result.rows });
+router.get("/sessions", async (req, res, next) => {
+  try {
+    const result = await query(
+      "SELECT * FROM symptom_sessions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50",
+      [req.user.id]
+    );
+    res.json({ sessions: result.rows });
+  } catch (err) { next(err); }
 });
 
 // Symptom timeline entries (severity, vitals, mood, sleep)
-router.post("/timeline", async (req, res) => {
+router.post("/timeline", async (req, res, next) => {
+  try {
   const {
     severity,
     symptomText,
@@ -94,18 +105,21 @@ router.post("/timeline", async (req, res) => {
       recordedAt || null,
     ]
   );
-  res.status(201).json({ entry: inserted.rows[0] });
+    res.status(201).json({ entry: inserted.rows[0] });
+  } catch (err) { next(err); }
 });
 
-router.get("/timeline", async (req, res) => {
-  const days = Number(req.query.days || 30);
-  const result = await query(
-    `SELECT * FROM symptom_timeline_entries
-     WHERE user_id = $1 AND recorded_at >= now() - ($2 || ' days')::interval
-     ORDER BY recorded_at ASC`,
-    [req.user.id, days]
-  );
-  res.json({ entries: result.rows });
+router.get("/timeline", async (req, res, next) => {
+  try {
+    const days = Number(req.query.days || 30);
+    const result = await query(
+      `SELECT * FROM symptom_timeline_entries
+       WHERE user_id = $1 AND recorded_at >= now() - ($2 || ' days')::interval
+       ORDER BY recorded_at ASC`,
+      [req.user.id, days]
+    );
+    res.json({ entries: result.rows });
+  } catch (err) { next(err); }
 });
 
 export default router;

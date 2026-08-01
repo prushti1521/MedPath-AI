@@ -18,6 +18,7 @@ import prescriptionsRoutes from "./routes/prescriptions.routes.js";
 import historyRoutes from "./routes/history.routes.js";
 import remindersRoutes from "./routes/reminders.routes.js";
 import conversationsRoutes from "./routes/conversations.routes.js";
+import aiRoutes from "./routes/ai.routes.js";
 
 dotenv.config();
 
@@ -109,6 +110,7 @@ app.use("/prescriptions", prescriptionsRoutes);
 app.use("/history", historyRoutes);
 app.use("/reminders", remindersRoutes);
 app.use("/conversations", conversationsRoutes);
+app.use("/ai", aiRoutes);
 
 // Central error handler — never leak stack traces to the client
 app.use((err, req, res, next) => {

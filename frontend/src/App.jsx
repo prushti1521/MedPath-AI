@@ -608,6 +608,27 @@ function SymptomCheck({ go }) {
 
   const current = steps[step];
 
+  async function saveToBackend(finalAnswers, triageResult) {
+    try {
+      const token = localStorage.getItem("AUTH_TOKEN") || "";
+      if (!token) return;
+      await fetch(`${API_BASE}/symptoms/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          freeText: finalAnswers.freeText || "",
+          answers: finalAnswers,
+          urgencyLevel: triageResult.level,
+          reasons: triageResult.reasons,
+          crisis: triageResult.crisis,
+        }),
+      });
+    } catch (e) {
+      // Non-critical: don't block UI if save fails
+      console.error("Failed to save symptom session:", e);
+    }
+  }
+
   function submitAnswer(value) {
     const next = { ...answers, [current.key]: value };
     setAnswers(next);
@@ -618,7 +639,9 @@ function SymptomCheck({ go }) {
       const redflag = RED_FLAG_WORDS.some((w) => text.includes(w));
       if (crisis || redflag) {
         setShowEmergency(true);
-        setResult(runTriage(next));
+        const triageResult = runTriage(next);
+        setResult(triageResult);
+        saveToBackend(next, triageResult);
         return;
       }
     }
@@ -626,7 +649,9 @@ function SymptomCheck({ go }) {
     if (step + 1 < steps.length) {
       setStep(step + 1);
     } else {
-      setResult(runTriage(next));
+      const triageResult = runTriage(next);
+      setResult(triageResult);
+      saveToBackend(next, triageResult);
     }
   }
 
@@ -1159,112 +1184,72 @@ function DoctorFinder() {
       if (useGoogle && googleKey) {
         return await fetchNearbyGoogle(lat, lon, rad);
       }
-      // Overpass QL: search common healthcare amenities with shorter timeout
-      const q = `
-        [out:json][timeout:15];
-        (
-          node(around:${rad},${lat},${lon})[amenity~"hospital|clinic|pharmacy|urgent_care|laboratory|doctors|healthcare|medical_center"];
-          way(around:${rad},${lat},${lon})[amenity~"hospital|clinic|pharmacy|urgent_care|laboratory|doctors|healthcare|medical_center"];
-          relation(around:${rad},${lat},${lon})[amenity~"hospital|clinic|pharmacy|urgent_care|laboratory|doctors|healthcare|medical_center"];
-        );
-        out center tags;
-      `;
 
-      const endpoints = [
-        "https://overpass-api.de/api/interpreter",
-        "https://lz4.overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
-      ];
-      
-      let resp = null;
-      let lastError = "";
-      
-      // Try each endpoint with a 12-second timeout
-      for (const ep of endpoints) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 12000);
-          
-          resp = await fetch(ep, {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ data: q }).toString(),
-            signal: controller.signal,
-          });
-          
-          clearTimeout(timeoutId);
-          
-          if (resp && resp.ok) {
-            const data = await resp.json();
-            const els = (data.elements || []).map((el) => {
-              const latp = el.lat || (el.center && el.center.lat);
-              const lonp = el.lon || (el.center && el.center.lon);
-              const tags = el.tags || {};
-              const distance = latp ? haversine(lat, lon, latp, lonp) : null;
-              return {
-                id: el.id,
-                name: tags.name || tags['operator'] || "(unnamed)",
-                type: (tags.amenity || tags.shop || tags.healthcare || "").toLowerCase(),
-                lat: latp,
-                lon: lonp,
-                phone: tags.phone || tags["contact:phone"] || null,
-                website: tags.website || (tags.url ? tags.url : null),
-                opening_hours: tags.opening_hours || null,
-                distance,
-                tags,
-              };
-            }).filter(p => p.lat && p.lon);
+      // Use backend proxy to avoid browser CORS/rate-limit issues with Overpass
+      const token = localStorage.getItem("AUTH_TOKEN") || "";
+      const params = new URLSearchParams({ lat, lon, radius: rad, type: filterType || "all" });
+      let overpassSuccess = false;
 
-            // de-duplicate by name+type+coords
-            const dedup = [];
-            const seen = new Set();
-            for (const p of els) {
-              const key = `${p.name}|${p.type}|${Math.round(p.lat*10000)}|${Math.round(p.lon*10000)}`;
-              if (!seen.has(key)) { seen.add(key); dedup.push(p); }
-            }
+      try {
+        const proxyResp = await fetch(`${API_BASE}/ai/nearby-providers?${params}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (proxyResp.ok) {
+          const data = await proxyResp.json();
+          const els = (data.elements || []).map((el) => {
+            const latp = el.lat || (el.center && el.center.lat);
+            const lonp = el.lon || (el.center && el.center.lon);
+            const tags = el.tags || {};
+            const distance = latp ? haversine(lat, lon, latp, lonp) : null;
+            return {
+              id: el.id,
+              name: tags.name || tags["operator"] || "(unnamed)",
+              type: (tags.amenity || tags.shop || tags.healthcare || "").toLowerCase(),
+              lat: latp,
+              lon: lonp,
+              phone: tags.phone || tags["contact:phone"] || null,
+              website: tags.website || tags.url || null,
+              opening_hours: tags.opening_hours || null,
+              distance,
+              tags,
+            };
+          }).filter((p) => p.lat && p.lon);
 
-            dedup.sort((a,b) => (a.distance||0) - (b.distance||0));
-            
-            if (dedup.length > 0) {
-              setPlaces(dedup);
-              setLoading(false);
-              return;
-            }
-            break; // API worked but no results, don't try other endpoints
+          const dedup = [];
+          const seen = new Set();
+          for (const p of els) {
+            const key = `${p.name}|${p.type}|${Math.round(p.lat * 10000)}|${Math.round(p.lon * 10000)}`;
+            if (!seen.has(key)) { seen.add(key); dedup.push(p); }
           }
-          lastError = `HTTP ${resp?.status || 'unknown'}`;
-        } catch (e) {
-          lastError = String(e).slice(0, 100);
-          // Continue to next endpoint
+          dedup.sort((a, b) => (a.distance || 0) - (b.distance || 0));
+
+          if (dedup.length > 0) {
+            setPlaces(dedup);
+            setLoading(false);
+            overpassSuccess = true;
+            return;
+          }
         }
+      } catch (proxyErr) {
+        // Backend proxy failed, fall through to demo data
       }
-      
-      // If Overpass failed, try Google fallback or use demo data
-      if (googleKey) {
-        try {
-          await fetchNearbyGoogle(lat, lon, rad);
-          return;
-        } catch (gerr) {
-          // Google also failed, use demo data
-          setError(`Overpass API unavailable (${lastError}). Showing demo results. Tip: Enable Google Places with an API key for real data.`);
-          const demoResults = DEMO_HEALTHCARE_LOCATIONS.filter(p => {
-            const dist = haversine(lat, lon, p.lat, p.lon);
-            return dist <= rad;
-          }).map(p => ({ ...p, distance: haversine(lat, lon, p.lat, p.lon) }))
-            .sort((a,b) => a.distance - b.distance);
-          setPlaces(demoResults);
-          return;
+
+      // Proxy unavailable — show demo data with a helpful message
+      if (!overpassSuccess) {
+        if (googleKey) {
+          try {
+            await fetchNearbyGoogle(lat, lon, rad);
+            return;
+          } catch (gerr) {
+            // Google also failed
+          }
         }
+        setError("Real provider data temporarily unavailable. Showing demo results. Add a Google Places API key for live data.");
+        const demoResults = DEMO_HEALTHCARE_LOCATIONS
+          .map((p) => ({ ...p, distance: haversine(lat, lon, p.lat, p.lon) }))
+          .sort((a, b) => a.distance - b.distance);
+        setPlaces(demoResults);
       }
-      
-      // No Google key, use demo data
-      setError(`Overpass API unavailable (${lastError}). Showing demo results. Tip: Enable Google Places with an API key for real data.`);
-      const demoResults = DEMO_HEALTHCARE_LOCATIONS.filter(p => {
-        const dist = haversine(lat, lon, p.lat, p.lon);
-        return dist <= rad;
-      }).map(p => ({ ...p, distance: haversine(lat, lon, p.lat, p.lon) }))
-        .sort((a,b) => a.distance - b.distance);
-      setPlaces(demoResults);
     } finally {
       setLoading(false);
     }
@@ -1605,26 +1590,22 @@ function AskAI() {
         .filter((m) => m.role === "user" || m.role === "ai")
         .map((m) => ({ role: m.role === "ai" ? "assistant" : "user", content: m.text }));
 
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const token = localStorage.getItem("AUTH_TOKEN") || "";
+      const response = await fetch(`${API_BASE}/ai/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1000,
-          system: ASK_AI_SYSTEM_PROMPT,
-          messages: apiHistory,
-        }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ messages: apiHistory }),
       });
 
-      if (!response.ok) throw new Error("Request failed with status " + response.status);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Request failed");
+      }
       const data = await response.json();
-      const text = (data.content || [])
-        .map((block) => (block.type === "text" ? block.text : ""))
-        .filter(Boolean)
-        .join("\n")
-        .trim();
-
-      setMessages((m) => [...m, { role: "ai", text: text || "I wasn't able to generate a response. Please try rephrasing your question." }]);
+      setMessages((m) => [...m, { role: "ai", text: data.text || "I wasn't able to generate a response. Please try rephrasing your question." }]);
     } catch (e) {
       setError("Something went wrong reaching the AI. Please try again.");
       setMessages((m) => [...m, { role: "ai", text: "Sorry, I couldn't process that just now. Please try again in a moment." }]);
@@ -1791,27 +1772,36 @@ export default function App() {
   }, [authToken]);
 
   const uploadProfilePhoto = async (file) => {
-    const formData = new FormData();
-    formData.append("photo", file);
-
-    const response = await fetch(`${API_BASE}/profile/photo`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: formData,
+    // Convert to base64 and store directly in the profile record
+    // (avoids ephemeral server filesystem issues)
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = reader.result; // data:image/...;base64,...
+          const response = await fetch(`${API_BASE}/profile`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+            body: JSON.stringify({ profilePhotoPath: base64 }),
+          });
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || "Unable to upload photo.");
+          }
+          const data = await response.json();
+          const photoPath = data.profile?.profile_photo_path || base64;
+          setProfile((p) => ({ ...p, profilePhotoPath: photoPath }));
+          setAvatarMenuOpen(false);
+          resolve(data);
+        } catch (e) {
+          reject(e);
+        }
+      };
+      reader.onerror = () => reject(new Error("Failed to read file."));
+      reader.readAsDataURL(file);
     });
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.error || "Unable to upload photo.");
-    }
-
-    const data = await response.json();
-    setProfile((p) => ({ ...p, profilePhotoPath: data.profilePhotoPath }));
-    setAvatarMenuOpen(false);
-    return data;
   };
+
 
   const removeProfilePhoto = async () => {
     const response = await fetch(`${API_BASE}/profile`, {

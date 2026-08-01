@@ -5,7 +5,8 @@ import { requireAuth } from "../middleware/auth.js";
 const router = Router();
 router.use(requireAuth);
 
-router.get("/", async (req, res) => {
+router.get("/", async (req, res, next) => {
+  try {
   const [profileRes, appointmentsRes, medsRes, symptomCountsRes, symptomsRes, reportsRes, remindersRes] = await Promise.all([
     query("SELECT full_name FROM medical_profiles WHERE user_id = $1", [req.user.id]),
     query("SELECT * FROM appointments WHERE user_id = $1 AND scheduled_for >= now() ORDER BY scheduled_for ASC LIMIT 1", [req.user.id]),
@@ -83,6 +84,7 @@ router.get("/", async (req, res) => {
   };
 
   res.json({ dashboard });
+  } catch (err) { next(err); }
 });
 
 export default router;
