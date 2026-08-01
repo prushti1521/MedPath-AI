@@ -3,6 +3,9 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 
 import authRoutes from "./routes/auth.routes.js";
 import profileRoutes from "./routes/profile.routes.js";
@@ -22,6 +25,30 @@ dotenv.config();
 process.on("unhandledRejection", (reason) => {
   console.error("Unhandled Rejection:", reason);
 });
+
+// Apply schema on startup if tables are missing
+async function initDb() {
+  try {
+    const { pool } = await import("./db/pool.js");
+    const check = await pool.query(
+      "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename='users'"
+    );
+    if (check.rowCount === 0) {
+      console.log("Users table not found — applying schema...");
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = dirname(__filename);
+      const schema = readFileSync(join(__dirname, "db", "schema.sql"), "utf8");
+      await pool.query(schema);
+      console.log("Schema applied successfully.");
+    } else {
+      console.log("Database schema already in place.");
+    }
+  } catch (err) {
+    console.error("DB init error (non-fatal):", err.message);
+  }
+}
+
+initDb();
 
 const app = express();
 
@@ -60,6 +87,16 @@ app.use(
 );
 
 app.get("/health", (req, res) => res.json({ status: "ok" }));
+
+app.get("/db-health", async (req, res) => {
+  try {
+    const { pool } = await import("./db/pool.js");
+    await pool.query("SELECT 1");
+    res.json({ status: "ok", db: "connected" });
+  } catch (err) {
+    res.status(503).json({ status: "error", db: "disconnected", error: err.message });
+  }
+});
 
 app.use("/auth", authRoutes);
 app.use("/profile", profileRoutes);
