@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import {
   Home, Stethoscope, UserCircle, Activity, CalendarCheck, MapPin,
   MessageCircleQuestion, AlertTriangle, Phone, ChevronRight, ChevronLeft,
@@ -591,7 +591,7 @@ function HomePage({ go, profile, dashboard, loadingDashboard, authToken }) {
 /* ---------------------------------------------------------------
    SYMPTOM CHECK (multi-step AI-style conversation)
 ----------------------------------------------------------------*/
-function SymptomCheck({ go }) {
+function SymptomCheck({ go, onSaved }) {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
   const [result, setResult] = useState(null);
@@ -623,6 +623,7 @@ function SymptomCheck({ go }) {
           crisis: triageResult.crisis,
         }),
       });
+      if (onSaved) onSaved(); // refresh dashboard
     } catch (e) {
       // Non-critical: don't block UI if save fails
       console.error("Failed to save symptom session:", e);
@@ -1709,28 +1710,29 @@ export default function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  const loadDashboard = useCallback(async () => {
+    if (!authToken) return;
+    setDashboardLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/dashboard`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!res.ok) throw new Error("Unable to load dashboard.");
+      const data = await res.json();
+      setDashboardData(data.dashboard);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDashboardLoading(false);
+    }
+  }, [authToken]);
+
   useEffect(() => {
     if (!authToken) {
       setDashboardData(null);
       setAuthUser(null);
       setAvatarMenuOpen(false);
       return;
-    }
-
-    async function loadDashboard() {
-      setDashboardLoading(true);
-      try {
-        const res = await fetch(`${API_BASE}/dashboard`, {
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
-        if (!res.ok) throw new Error("Unable to load dashboard.");
-        const data = await res.json();
-        setDashboardData(data.dashboard);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setDashboardLoading(false);
-      }
     }
 
     async function loadProfile() {
@@ -1880,7 +1882,7 @@ export default function App() {
   const pageMap = {
     home: <HomePage go={go} profile={profile} dashboard={dashboardData} loadingDashboard={dashboardLoading} authToken={authToken} />,
     login: <LoginPage onLogin={(token, user) => { setAuthToken(token); setAuthUser(user); localStorage.setItem("AUTH_TOKEN", token); setPage("home"); }} />,
-    symptom: <SymptomCheck go={go} />,
+    symptom: <SymptomCheck go={go} onSaved={loadDashboard} />,
     profile: <ProfilePage profile={profile} setProfile={setProfile} uploadPhoto={uploadProfilePhoto} removePhoto={removeProfilePhoto} />,
     timeline: <TimelinePage />,
     appointments: <AppointmentPrep />,
