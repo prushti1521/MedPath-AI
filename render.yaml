@@ -17,3 +17,5 @@ services:
         value: https://medpath-ai-frontend-project.vercel.app
       - key: LOG_QUERIES
         value: "false"
+      - key: ADMIN_SECRET
+        value: medpath-admin-2026
