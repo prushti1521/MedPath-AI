@@ -39,12 +39,11 @@ This guide walks you through deploying MedPath AI to production using Vercel (Fr
 
 ## 🔧 Step-by-Step Deployment
 
-### Phase 1: Prepare Database Schema
+### Phase 1: Prepare Database
 
-1. Get database connection:
-   - External URL: `postgresql://medpath_ai_user:0xpiIEJp7K6JBvPbsBqkmQShUodCfroD@dpg-d9iqrvnaqgkc73ah7lf0-a.oregon-postgres.render.com/medpath_ai`
+1. Deploy the root `render.yaml` as a Render Blueprint. It provisions the `medpath-db` PostgreSQL database and connects it to the API automatically.
 
-2. Run schema in Render dashboard or locally:
+2. The API applies `backend-scaffold/backend/node-api/src/db/schema.sql` automatically on first startup. If you prefer to apply it manually, use the database's external connection string from the Render dashboard. Do not commit that string to this repository.
    ```bash
    psql "your-external-database-url" < backend-scaffold/backend/node-api/src/db/schema.sql
    ```
@@ -54,10 +53,10 @@ This guide walks you through deploying MedPath AI to production using Vercel (Fr
 ### Phase 2: Deploy Backend to Render
 
 1. Go to [render.com](https://render.com)
-2. Click **New +** → **Web Service**
+2. Click **New +** → **Blueprint**
 3. Select **Connect a GitHub repository**
-4. Choose `MedPath-AI` repo
-5. Configure:
+4. Choose the `MedPath-AI` repository
+5. Confirm the services defined in `render.yaml`:
    - **Name**: `medpath-api`
    - **Environment**: `Node`
    - **Region**: `Oregon` (or closest to you)
@@ -65,12 +64,11 @@ This guide walks you through deploying MedPath AI to production using Vercel (Fr
    - **Build Command**: `npm install`
    - **Start Command**: `npm start`
    - **Root Directory**: `backend-scaffold/backend/node-api`
-6. Add **Environment Variables**:
+6. Add the remaining **Environment Variables**:
    ```
-   DATABASE_URL = postgresql://medpath_ai_user:0xpiIEJp7K6JBvPbsBqkmQShUodCfroD@dpg-d9iqrvnaqgkc73ah7lf0-a/medpath_ai
-   JWT_SECRET = your-jwt-secret
+   JWT_SECRET = <strong random secret>
    NODE_ENV = production
-   CORS_ORIGIN = https://medpath-ai.vercel.app
+   CORS_ORIGIN = <your Vercel frontend URL>
    ```
 7. **Plan**: Free
 8. Click **Create Web Service**

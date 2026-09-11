@@ -1,19 +1,27 @@
+databases:
+  - name: medpath-db
+    plan: free
+    region: oregon
+
 services:
   - type: web
     name: medpath-api
     env: docker
     plan: free
     region: oregon
+    healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
-        value: postgresql://medpath_ai_user:0xpiIEJp7K6JBvPbsBqkmQShUodCfroD@dpg-d9iqrvnaqgkc73ah7lf0-a/medpath_ai
+        fromDatabase:
+          name: medpath-db
+          property: connectionString
       - key: JWT_SECRET
-        value: your-super-secret-jwt-key-change-this-in-production
+        sync: false
       - key: NODE_ENV
         value: production
       - key: PORT
         value: "4000"
       - key: CORS_ORIGIN
-        value: https://medpath-ai-frontend-project.vercel.app
+        sync: false
       - key: LOG_QUERIES
         value: "false"
