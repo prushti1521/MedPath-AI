@@ -180,10 +180,12 @@ router.get("/nearby-providers", async (req, res) => {
     }
   }
 
+  const userLat = Number(lat);
+  const userLon = Number(lon);
   const fallbackPlaces = [
-    { id: "fallback-hospital", lat: 37.7749, lon: -122.4194, tags: { name: "St. Mary Medical Center", amenity: "hospital", phone: "(415) 555-0100" } },
-    { id: "fallback-clinic", lat: 37.7759, lon: -122.4164, tags: { name: "Downtown Urgent Care", amenity: "clinic", phone: "(415) 555-0101" } },
-    { id: "fallback-pharmacy", lat: 37.7799, lon: -122.4094, tags: { name: "Downtown Pharmacy Plus", amenity: "pharmacy", phone: "(415) 555-0102" } },
+    { id: "fallback-hospital", lat: userLat + 0.004, lon: userLon + 0.004, tags: { name: "Community Medical Center", amenity: "hospital", phone: "(555) 555-0100" } },
+    { id: "fallback-clinic", lat: userLat + 0.006, lon: userLon - 0.003, tags: { name: "Neighborhood Urgent Care", amenity: "clinic", phone: "(555) 555-0101" } },
+    { id: "fallback-pharmacy", lat: userLat - 0.003, lon: userLon + 0.005, tags: { name: "Local Pharmacy Plus", amenity: "pharmacy", phone: "(555) 555-0102" } },
   ];
   res.json({ elements: fallbackPlaces, fallback: true });
 });
