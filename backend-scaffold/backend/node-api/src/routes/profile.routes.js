@@ -171,4 +171,32 @@ router.delete("/allergies/:id", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+router.post("/conditions", async (req, res, next) => {
+  try {
+    const { name, diagnosedOn, notes, status } = req.body;
+    if (!name) return res.status(400).json({ error: "Condition name is required." });
+
+    const profile = await query("SELECT id FROM medical_profiles WHERE user_id = $1", [req.user.id]);
+    if (!profile.rowCount) return res.status(404).json({ error: "Profile not found." });
+
+    const inserted = await query(
+      `INSERT INTO chronic_conditions (profile_id, name, diagnosed_on, notes)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [profile.rows[0].id, name, diagnosedOn || null, notes || status || null]
+    );
+    res.status(201).json({ condition: inserted.rows[0] });
+  } catch (err) { next(err); }
+});
+
+router.delete("/conditions/:id", async (req, res, next) => {
+  try {
+    await query(
+      `DELETE FROM chronic_conditions c USING medical_profiles p
+       WHERE c.id = $1 AND c.profile_id = p.id AND p.user_id = $2`,
+      [req.params.id, req.user.id]
+    );
+    res.status(204).send();
+  } catch (err) { next(err); }
+});
+
 export default router;

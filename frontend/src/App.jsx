@@ -832,7 +832,24 @@ function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
       }
 
       const data = await response.json();
-      setProfile((p) => ({ ...p, ...data.profile }));
+      setProfile((p) => ({
+        ...p,
+        name: data.profile.full_name ?? p.name,
+        email: data.profile.email ?? p.email,
+        phoneNumber: data.profile.phone_number ?? p.phoneNumber,
+        profilePhotoPath: data.profile.profile_photo_path ?? p.profilePhotoPath,
+        dateOfBirth: data.profile.date_of_birth ?? p.dateOfBirth,
+        age: data.profile.age ?? p.age,
+        gender: data.profile.sex ?? p.gender,
+        bloodType: data.profile.blood_type ?? p.bloodType,
+        height: data.profile.height_cm ?? p.height,
+        weight: data.profile.weight_kg ?? p.weight,
+        insuranceProvider: data.profile.insurance_provider ?? p.insuranceProvider,
+        emergencyContact: data.profile.emergency_contact ?? p.emergencyContact,
+        address: data.profile.address ?? p.address,
+        country: data.profile.country ?? p.country,
+        preferredLanguage: data.profile.preferred_language ?? p.preferredLanguage,
+      }));
       setSaveStatus("saved");
     } catch (err) {
       setSaveStatus("error");
@@ -840,14 +857,35 @@ function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
     }
   }
 
-  function addTag(field) {
+  async function addTag(field) {
     const val = tagInput[field].trim();
     if (!val) return;
-    update(field, [...(profile[field] || []), val]);
-    setTagInput((t) => ({ ...t, [field]: "" }));
+    try {
+      const endpoint = field === "allergies" ? "allergies" : "conditions";
+      const response = await fetch(`${API_BASE}/profile/${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify(field === "allergies" ? { substance: val } : { name: val }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `Unable to add ${field}.`);
+      const item = field === "allergies" ? data.allergy : data.condition;
+      update(field, [...(profile[field] || []), item]);
+      setTagInput((t) => ({ ...t, [field]: "" }));
+    } catch (err) {
+      setError(err.message || `Unable to add ${field}.`);
+    }
   }
 
-  function removeTag(field, i) {
+  async function removeTag(field, i) {
+    const item = profile[field][i];
+    if (item?.id) {
+      const endpoint = field === "allergies" ? "allergies" : "conditions";
+      await fetch(`${API_BASE}/profile/${endpoint}/${item.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+    }
     update(field, profile[field].filter((_, idx) => idx !== i));
   }
 
@@ -972,7 +1010,7 @@ function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {(profile.allergies || []).map((a, i) => (
             <span key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: `${T.red}14`, color: T.red, padding: "5px 10px", borderRadius: 999, fontSize: 12.5, fontWeight: 600 }}>
-              {a} <X size={12} style={{ cursor: "pointer" }} onClick={() => removeTag("allergies", i)} />
+              {a.substance || a} <X size={12} style={{ cursor: "pointer" }} onClick={() => removeTag("allergies", i)} />
             </span>
           ))}
           {!(profile.allergies || []).length && <span style={{ fontSize: 13, color: T.inkSoft }}>No known allergies added.</span>}
@@ -986,7 +1024,7 @@ function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {(profile.conditions || []).map((a, i) => (
             <span key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: `${T.blue}14`, color: T.blue, padding: "5px 10px", borderRadius: 999, fontSize: 12.5, fontWeight: 600 }}>
-              {a} <X size={12} style={{ cursor: "pointer" }} onClick={() => removeTag("conditions", i)} />
+              {a.name || a} <X size={12} style={{ cursor: "pointer" }} onClick={() => removeTag("conditions", i)} />
             </span>
           ))}
           {!(profile.conditions || []).length && <span style={{ fontSize: 13, color: T.inkSoft }}>None added.</span>}
@@ -999,27 +1037,70 @@ function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
 /* ---------------------------------------------------------------
    TIMELINE
 ----------------------------------------------------------------*/
-const TIMELINE_DATA = [
-  { day: "Jul 12", severity: 6, temp: 99.8, hr: 82 },
-  { day: "Jul 13", severity: 7, temp: 100.9, hr: 88 },
-  { day: "Jul 14", severity: 8, temp: 101.6, hr: 92 },
-  { day: "Jul 15", severity: 6, temp: 100.2, hr: 85 },
-  { day: "Jul 16", severity: 4, temp: 99.1, hr: 78 },
-  { day: "Jul 17", severity: 3, temp: 98.6, hr: 74 },
-  { day: "Jul 18", severity: 2, temp: 98.4, hr: 71 },
-  { day: "Jul 19", severity: 2, temp: 98.6, hr: 72 },
-];
+function TimelinePage({ authToken }) {
+  const [entries, setEntries] = useState([]);
+  const [form, setForm] = useState({ severity: 5, temperatureF: "", heartRate: "", symptomText: "" });
+  const [status, setStatus] = useState("");
 
-function TimelinePage() {
+  async function loadEntries() {
+    const response = await fetch(`${API_BASE}/symptoms/timeline`, { headers: { Authorization: `Bearer ${authToken}` } });
+    if (!response.ok) throw new Error("Unable to load timeline.");
+    const data = await response.json();
+    setEntries(data.entries || []);
+  }
+
+  useEffect(() => {
+    if (authToken) loadEntries().catch((err) => setStatus(err.message));
+  }, [authToken]);
+
+  async function addEntry() {
+    setStatus("Saving…");
+    try {
+      const response = await fetch(`${API_BASE}/symptoms/timeline`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({
+          severity: Number(form.severity),
+          temperatureF: form.temperatureF ? Number(form.temperatureF) : null,
+          heartRate: form.heartRate ? Number(form.heartRate) : null,
+          symptomText: form.symptomText || null,
+        }),
+      });
+      if (!response.ok) throw new Error("Unable to save timeline entry.");
+      setForm({ severity: 5, temperatureF: "", heartRate: "", symptomText: "" });
+      await loadEntries();
+      setStatus("Saved");
+    } catch (err) {
+      setStatus(err.message);
+    }
+  }
+
+  const timelineData = entries.map((entry) => ({
+    day: new Date(entry.recorded_at).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    severity: entry.severity,
+    temp: entry.temperature_f,
+    hr: entry.heart_rate,
+  }));
+
   return (
     <div>
       <SectionTitle eyebrow="Symptom timeline" title="How you've trended" sub="A visual log of severity, temperature, and heart rate — useful to bring to an appointment." />
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ fontWeight: 600, marginBottom: 12, color: T.ink }}>Log a reading</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+          <label style={{ fontSize: 12.5, color: T.inkSoft }}>Severity (1–10)<input style={inputStyle} type="number" min="1" max="10" value={form.severity} onChange={(e) => setForm((f) => ({ ...f, severity: e.target.value }))} /></label>
+          <label style={{ fontSize: 12.5, color: T.inkSoft }}>Temperature °F<input style={inputStyle} type="number" step="0.1" value={form.temperatureF} onChange={(e) => setForm((f) => ({ ...f, temperatureF: e.target.value }))} /></label>
+          <label style={{ fontSize: 12.5, color: T.inkSoft }}>Heart rate<input style={inputStyle} type="number" value={form.heartRate} onChange={(e) => setForm((f) => ({ ...f, heartRate: e.target.value }))} /></label>
+        </div>
+        <input style={{ ...inputStyle, marginTop: 10 }} value={form.symptomText} onChange={(e) => setForm((f) => ({ ...f, symptomText: e.target.value }))} placeholder="What are you noticing?" />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}><GhostButton icon={Check} onClick={addEntry}>Save reading</GhostButton>{status && <span style={{ fontSize: 13, color: status === "Saved" ? T.sage : T.red }}>{status}</span>}</div>
+      </Card>
       <Card>
         <div style={{ fontWeight: 600, marginBottom: 4, color: T.ink }}>Severity over time</div>
-        <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 10 }}>Last 8 days · self-reported, 1–10 scale</div>
+        <div style={{ fontSize: 12.5, color: T.inkSoft, marginBottom: 10 }}>Saved readings · self-reported, 1–10 scale</div>
         <div style={{ width: "100%", height: 260 }}>
           <ResponsiveContainer>
-            <LineChart data={TIMELINE_DATA} margin={{ left: -12, right: 10, top: 6 }}>
+            <LineChart data={timelineData} margin={{ left: -12, right: 10, top: 6 }}>
               <CartesianGrid stroke={T.line} vertical={false} />
               <XAxis dataKey="day" tick={{ fontSize: 11.5, fill: T.inkSoft }} axisLine={{ stroke: T.line }} tickLine={false} />
               <YAxis tick={{ fontSize: 11.5, fill: T.inkSoft }} domain={[0, 10]} axisLine={false} tickLine={false} />
@@ -1034,7 +1115,7 @@ function TimelinePage() {
           <div style={{ fontWeight: 600, marginBottom: 10, color: T.ink }}>Temperature (°F)</div>
           <div style={{ width: "100%", height: 200 }}>
             <ResponsiveContainer>
-              <LineChart data={TIMELINE_DATA} margin={{ left: -18, right: 10 }}>
+              <LineChart data={timelineData} margin={{ left: -18, right: 10 }}>
                 <CartesianGrid stroke={T.line} vertical={false} />
                 <XAxis dataKey="day" tick={{ fontSize: 10.5, fill: T.inkSoft }} axisLine={{ stroke: T.line }} tickLine={false} />
                 <YAxis tick={{ fontSize: 10.5, fill: T.inkSoft }} domain={[97, 103]} axisLine={false} tickLine={false} />
@@ -1048,7 +1129,7 @@ function TimelinePage() {
           <div style={{ fontWeight: 600, marginBottom: 10, color: T.ink }}>Heart rate (bpm)</div>
           <div style={{ width: "100%", height: 200 }}>
             <ResponsiveContainer>
-              <LineChart data={TIMELINE_DATA} margin={{ left: -18, right: 10 }}>
+              <LineChart data={timelineData} margin={{ left: -18, right: 10 }}>
                 <CartesianGrid stroke={T.line} vertical={false} />
                 <XAxis dataKey="day" tick={{ fontSize: 10.5, fill: T.inkSoft }} axisLine={{ stroke: T.line }} tickLine={false} />
                 <YAxis tick={{ fontSize: 10.5, fill: T.inkSoft }} domain={[60, 100]} axisLine={false} tickLine={false} />
@@ -1061,7 +1142,7 @@ function TimelinePage() {
       </div>
       <Card style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 12, background: `${T.sage}10`, border: `1px solid ${T.sage}40` }}>
         <Activity size={18} color={T.sage} />
-        <div style={{ fontSize: 13.5, color: T.ink }}>Your trend is improving — severity has dropped from 8 to 2 over the last five days. Wearable sync (Apple Health, Google Fit, Fitbit) can auto-populate this timeline once connected.</div>
+        <div style={{ fontSize: 13.5, color: T.ink }}>{entries.length ? "Your saved readings appear here for future visits." : "No readings saved yet. Add your first reading above."}</div>
       </Card>
     </div>
   );
@@ -1071,7 +1152,7 @@ function TimelinePage() {
 /* ---------------------------------------------------------------
    APPOINTMENT PREP
 ----------------------------------------------------------------*/
-function AppointmentPrep() {
+function AppointmentPrep({ authToken }) {
   const [items, setItems] = useState([
     { id: 1, label: "Photo ID and insurance card", done: false },
     { id: 2, label: "List of current medications and dosages", done: false },
@@ -1085,18 +1166,54 @@ function AppointmentPrep() {
     "Could this be related to my existing condition?",
     "What symptoms should send me straight to the ER?",
   ]);
+  const [appointmentId, setAppointmentId] = useState(null);
+  const [saveStatus, setSaveStatus] = useState("");
 
-  const toggle = (id) => setItems((its) => its.map((i) => (i.id === id ? { ...i, done: !i.done } : i)));
+  useEffect(() => {
+    async function loadAppointment() {
+      const response = await fetch(`${API_BASE}/providers/appointments`, { headers: { Authorization: `Bearer ${authToken}` } });
+      if (!response.ok) return;
+      const data = await response.json();
+      const appointment = data.appointments?.[0];
+      if (appointment) {
+        setAppointmentId(appointment.id);
+        if (Array.isArray(appointment.checklist) && appointment.checklist.length) setItems(appointment.checklist);
+        if (Array.isArray(appointment.questions) && appointment.questions.length) setQuestions(appointment.questions);
+      }
+    }
+    if (authToken) loadAppointment().catch(() => {});
+  }, [authToken]);
+
+  async function persist(nextItems, nextQuestions) {
+    setSaveStatus("Saving…");
+    const options = { headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` } };
+    const response = appointmentId
+      ? await fetch(`${API_BASE}/providers/appointments/${appointmentId}`, { ...options, method: "PATCH", body: JSON.stringify({ checklist: nextItems, questions: nextQuestions }) })
+      : await fetch(`${API_BASE}/providers/appointments`, { ...options, method: "POST", body: JSON.stringify({ checklist: nextItems, questions: nextQuestions }) });
+    if (!response.ok) throw new Error("Unable to save appointment prep.");
+    const data = await response.json();
+    if (!appointmentId) setAppointmentId(data.appointment.id);
+    setSaveStatus("Saved");
+  }
+
+  const toggle = (id) => {
+    const nextItems = items.map((i) => (i.id === id ? { ...i, done: !i.done } : i));
+    setItems(nextItems);
+    persist(nextItems, questions).catch(() => setSaveStatus("Save failed"));
+  };
   const addQuestion = () => {
     if (!question.trim()) return;
-    setQuestions((q) => [...q, question.trim()]);
+    const nextQuestions = [...questions, question.trim()];
+    setQuestions(nextQuestions);
     setQuestion("");
+    persist(items, nextQuestions).catch(() => setSaveStatus("Save failed"));
   };
   const doneCount = items.filter((i) => i.done).length;
 
   return (
     <div>
       <SectionTitle eyebrow="Appointment prep" title="Get ready for your visit" sub="A personalized checklist based on your recent symptom check." />
+      {saveStatus && <div style={{ fontSize: 13, color: saveStatus === "Saved" ? T.sage : T.inkSoft, marginBottom: 10 }}>{saveStatus}</div>}
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <div style={{ fontWeight: 600, color: T.ink }}>What to bring</div>
@@ -1492,19 +1609,39 @@ const KNOWN_INTERACTIONS = [
   { pair: ["simvastatin", "clarithromycin"], severity: "High", note: "Clarithromycin can raise statin levels, increasing muscle-injury risk." },
 ];
 
-function MedicationsPage() {
-  const [meds, setMeds] = useState(["Lisinopril", "Metformin"]);
+function MedicationsPage({ authToken }) {
+  const [meds, setMeds] = useState([]);
   const [input, setInput] = useState("");
+  const [status, setStatus] = useState("");
 
-  const addMed = () => {
+  useEffect(() => {
+    fetch(`${API_BASE}/medications`, { headers: { Authorization: `Bearer ${authToken}` } })
+      .then((response) => response.json())
+      .then((data) => setMeds(data.medications || []))
+      .catch(() => setStatus("Unable to load medications."));
+  }, [authToken]);
+
+  const addMed = async () => {
     if (!input.trim()) return;
-    setMeds((m) => [...m, input.trim()]);
+    setStatus("Saving…");
+    const response = await fetch(`${API_BASE}/medications`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({ name: input.trim() }),
+    });
+    const data = await response.json();
+    if (!response.ok) { setStatus(data.error || "Unable to save medication."); return; }
+    setMeds((m) => [data.medication, ...m]);
     setInput("");
+    setStatus("Saved");
   };
-  const removeMed = (i) => setMeds((m) => m.filter((_, idx) => idx !== i));
+  const removeMed = async (id) => {
+    await fetch(`${API_BASE}/medications/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+    setMeds((m) => m.filter((med) => med.id !== id));
+  };
 
   const interactions = useMemo(() => {
-    const lower = meds.map((m) => m.toLowerCase());
+    const lower = meds.map((m) => (m.name || "").toLowerCase());
     return KNOWN_INTERACTIONS.filter(({ pair }) => pair.every((p) => lower.some((m) => m.includes(p))));
   }, [meds]);
 
@@ -1513,15 +1650,16 @@ function MedicationsPage() {
       <SectionTitle eyebrow="Medications" title="Manage your medications" sub="Add what you're taking to check for interactions, duplicates, and allergy conflicts." />
       <Card>
         <div style={{ fontWeight: 600, marginBottom: 12, color: T.ink }}>Current medications</div>
+        {status && <div style={{ fontSize: 13, color: status === "Saved" ? T.sage : T.red, marginBottom: 10 }}>{status}</div>}
         <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
           <input style={inputStyle} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addMed()} placeholder="e.g. Ibuprofen" />
           <GhostButton icon={Plus} onClick={addMed} style={{ padding: "9px 12px" }}>Add</GhostButton>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {meds.map((m, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", background: T.paper, borderRadius: 8 }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: T.ink }}><PillIcon size={14} color={T.teal} />{m}</span>
-              <Trash2 size={15} color={T.inkSoft} style={{ cursor: "pointer" }} onClick={() => removeMed(i)} />
+          {meds.map((m) => (
+            <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", background: T.paper, borderRadius: 8 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: T.ink }}><PillIcon size={14} color={T.teal} />{m.name}</span>
+              <Trash2 size={15} color={T.inkSoft} style={{ cursor: "pointer" }} onClick={() => removeMed(m.id)} />
             </div>
           ))}
           {!meds.length && <div style={{ color: T.inkSoft, fontSize: 13.5 }}>No medications added yet.</div>}
@@ -1886,10 +2024,10 @@ export default function App() {
     login: <LoginPage onLogin={(token, user) => { setAuthToken(token); setAuthUser(user); localStorage.setItem("AUTH_TOKEN", token); setPage("home"); }} />,
     symptom: <SymptomCheck go={go} onSaved={loadDashboard} />,
     profile: <ProfilePage profile={profile} setProfile={setProfile} uploadPhoto={uploadProfilePhoto} removePhoto={removeProfilePhoto} />,
-    timeline: <TimelinePage />,
-    appointments: <AppointmentPrep />,
+    timeline: <TimelinePage authToken={authToken} />,
+    appointments: <AppointmentPrep authToken={authToken} />,
     doctors: <DoctorFinder />,
-    meds: <MedicationsPage />,
+    meds: <MedicationsPage authToken={authToken} />,
     ask: <AskAI />,
   };
 

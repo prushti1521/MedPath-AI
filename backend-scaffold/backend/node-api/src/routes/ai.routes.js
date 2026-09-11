@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
+import { query } from "../db/pool.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -54,7 +55,7 @@ router.post("/chat", async (req, res) => {
       } else {
         const data = await response.json();
         const text = data.choices?.[0]?.message?.content?.trim() || "I wasn't able to generate a response.";
-        return res.json({ text });
+        return saveChatResponse(req.user.id, messages, text, res);
       }
     } catch (err) {
       console.error("Groq error:", err);
@@ -95,7 +96,7 @@ router.post("/chat", async (req, res) => {
         .join("\n")
         .trim();
 
-      return res.json({ text });
+      return saveChatResponse(req.user.id, messages, text, res);
     } catch (err) {
       console.error("AI chat error:", err);
       return res.status(502).json({ error: "Could not reach the AI service. Please try again." });
@@ -104,6 +105,31 @@ router.post("/chat", async (req, res) => {
 
   return res.status(503).json({ error: "AI service not configured. Add GROQ_API_KEY (free at console.groq.com) or ANTHROPIC_API_KEY to the server environment." });
 });
+
+async function saveChatResponse(userId, messages, text, res) {
+  try {
+    const lastUserMessage = [...messages].reverse().find((message) => message.role === "user");
+    const conversation = await query(
+      `INSERT INTO conversations (user_id, title, kind) VALUES ($1, $2, $3) RETURNING id`,
+      [userId, String(lastUserMessage?.content || "Ask AI").slice(0, 80), "ask_ai"]
+    );
+    const conversationId = conversation.rows[0].id;
+    for (const message of messages.filter((item) => item.role === "user" || item.role === "assistant")) {
+      await query(
+        `INSERT INTO ai_responses (conversation_id, role, content) VALUES ($1, $2, $3)`,
+        [conversationId, message.role, message.content]
+      );
+    }
+    await query(
+      `INSERT INTO ai_responses (conversation_id, role, content) VALUES ($1, $2, $3)`,
+      [conversationId, "assistant", text]
+    );
+    return res.json({ text, conversationId });
+  } catch (err) {
+    console.error("AI response persistence error:", err);
+    return res.json({ text });
+  }
+}
 
 // Overpass API proxy — avoids browser CORS/rate-limit issues
 router.get("/nearby-providers", async (req, res) => {
