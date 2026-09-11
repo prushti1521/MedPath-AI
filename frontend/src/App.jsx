@@ -31,7 +31,9 @@ const T = {
 };
 
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap');`;
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
+const API_BASE = import.meta.env.VITE_API_BASE || (
+  import.meta.env.DEV ? "http://localhost:4000" : "https://medpath-api-yxav.onrender.com"
+);
 
 const URGENCY = {
   emergency: { label: "Emergency", color: T.red, order: 3, action: "Call emergency services or go to the ER now.", icon: ShieldAlert },
