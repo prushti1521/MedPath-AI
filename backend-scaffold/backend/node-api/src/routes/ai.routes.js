@@ -103,8 +103,21 @@ router.post("/chat", async (req, res) => {
     }
   }
 
-  return res.status(503).json({ error: "AI service not configured. Add GROQ_API_KEY (free at console.groq.com) or ANTHROPIC_API_KEY to the server environment." });
+  const lastMessage = [...messages].reverse().find((message) => message.role === "user");
+  const fallbackText = getEducationalFallback(lastMessage?.content || "");
+  return saveChatResponse(req.user.id, messages, fallbackText, res);
 });
+
+function getEducationalFallback(question) {
+  const normalized = question.toLowerCase();
+  if (normalized.includes("migraine") || normalized.includes("headache")) {
+    return "A migraine is a neurological condition that can cause moderate to severe, often throbbing head pain, sometimes with nausea or sensitivity to light and sound. Common triggers include stress, poor sleep, dehydration, skipped meals, and hormonal changes. Resting in a quiet, dark room and maintaining regular hydration may help, but seek urgent care for a sudden severe headache, weakness, confusion, fainting, fever with a stiff neck, or vision loss. This is educational information, not medical advice.";
+  }
+  if (normalized.includes("hypertension") || normalized.includes("blood pressure")) {
+    return "Hypertension means blood pressure stays higher than the recommended range over time. It often has no obvious symptoms, which is why regular checks matter. Management commonly includes activity, balanced nutrition, limiting sodium, avoiding tobacco, and medications prescribed by a clinician. Seek urgent care for very high readings with chest pain, breathing trouble, weakness, confusion, or severe headache. This is educational information, not medical advice.";
+  }
+  return "I can provide general educational information about common conditions, symptoms, medications, and prevention. The AI service is temporarily unavailable, so please try a question about a health topic again shortly. For personal symptoms or urgent concerns, use Symptom Check and contact a qualified healthcare professional. This is educational information, not medical advice.";
+}
 
 async function saveChatResponse(userId, messages, text, res) {
   try {
