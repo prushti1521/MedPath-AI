@@ -83,7 +83,7 @@ router.post("/timeline", async (req, res, next) => {
        (user_id, severity, symptom_text, body_location, notes, temperature_f, heart_rate,
         blood_pressure_systolic, blood_pressure_diastolic, blood_sugar, weight_kg,
         sleep_hours, water_intake_liters, exercise_minutes, stress_level, mood, source, recorded_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,COALESCE($18, now())) RETURNING *`,
     [
       req.user.id,
       severity || null,
