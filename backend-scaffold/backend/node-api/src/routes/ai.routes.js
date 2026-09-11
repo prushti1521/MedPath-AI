@@ -180,7 +180,12 @@ router.get("/nearby-providers", async (req, res) => {
     }
   }
 
-  res.status(502).json({ error: "Overpass API unavailable. Showing demo results." });
+  const fallbackPlaces = [
+    { id: "fallback-hospital", lat: 37.7749, lon: -122.4194, tags: { name: "St. Mary Medical Center", amenity: "hospital", phone: "(415) 555-0100" } },
+    { id: "fallback-clinic", lat: 37.7759, lon: -122.4164, tags: { name: "Downtown Urgent Care", amenity: "clinic", phone: "(415) 555-0101" } },
+    { id: "fallback-pharmacy", lat: 37.7799, lon: -122.4094, tags: { name: "Downtown Pharmacy Plus", amenity: "pharmacy", phone: "(415) 555-0102" } },
+  ];
+  res.json({ elements: fallbackPlaces, fallback: true });
 });
 
 export default router;
