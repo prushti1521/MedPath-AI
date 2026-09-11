@@ -1307,7 +1307,7 @@ function DoctorFinder() {
 
       // Use backend proxy to avoid browser CORS/rate-limit issues with Overpass
       const token = localStorage.getItem("AUTH_TOKEN") || "";
-      const params = new URLSearchParams({ lat, lon, radius: rad, type: filterType || "all" });
+      const params = new URLSearchParams({ lat, lon, radius: rad, type: typeFilter || "all" });
       let overpassSuccess = false;
 
       try {
