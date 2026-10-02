@@ -2239,6 +2239,9 @@ export default function App() {
           <button type="button" onClick={logout} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 44, padding: "10px", border: "1px solid rgba(255,255,255,0.24)", borderRadius: 8, background: "transparent", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>
             <LogOut size={16} />Sign out
           </button>
+          <button type="button" onClick={() => { setMobileOpen(false); setDeleteAccountModalOpen(true); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 44, marginTop: 8, padding: "10px", border: "1px solid rgba(255, 179, 179, 0.45)", borderRadius: 8, background: "rgba(255, 0, 0, 0.1)", color: "#ffb3b3", fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>
+            <Trash2 size={16} />Delete account
+          </button>
         </div>
       )}
 
