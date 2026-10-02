@@ -41,11 +41,20 @@ export function buildOfflineMedicalAnswer(messages) {
   return "I can't generate a tailored answer right now because the AI provider is unavailable. For personal symptoms, use the app's Symptom Check or contact a healthcare professional; seek urgent care for severe or rapidly worsening symptoms. This is educational guidance only, not a diagnosis or personal medical advice.";
 }
 
+export function getPrimaryAiProvider({ geminiKey, groqKey, anthropicKey }) {
+  if (groqKey) return "groq";
+  if (geminiKey) return "gemini";
+  if (anthropicKey) return "anthropic";
+  return "offline";
+}
+
 router.post("/chat", async (req, res) => {
   const geminiKey = process.env.GEMINI_API_KEY;
   const groqKey = process.env.GROQ_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const geminiModel = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+  const groqModel = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
+  const primaryProvider = getPrimaryAiProvider({ geminiKey, groqKey, anthropicKey });
 
   const { messages } = req.body;
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -56,7 +65,7 @@ router.post("/chat", async (req, res) => {
     return saveChatResponse(req.user.id, messages, text, res, [], { provider: "offline", mode: "offline_fallback" });
   }
 
-  if (geminiKey) {
+  if (geminiKey && primaryProvider === "gemini") {
     try {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent`, {
         method: "POST",
@@ -85,7 +94,7 @@ router.post("/chat", async (req, res) => {
       } else {
         const data = await response.json();
         const { text, sources } = extractGeminiResponse(data);
-        if (text) return saveChatResponse(req.user.id, messages, text, res, sources);
+        if (text) return saveChatResponse(req.user.id, messages, text, res, sources, { provider: "gemini" });
         if (!groqKey && !anthropicKey) {
           const fallbackText = buildOfflineMedicalAnswer(messages);
           return saveChatResponse(req.user.id, messages, fallbackText, res, [], { provider: "offline", mode: "offline_fallback" });
@@ -110,7 +119,7 @@ router.post("/chat", async (req, res) => {
           "Authorization": `Bearer ${groqKey}`,
         },
         body: JSON.stringify({
-          model: "llama-3.1-8b-instant",
+          model: groqModel,
           max_tokens: 1000,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
@@ -130,7 +139,7 @@ router.post("/chat", async (req, res) => {
       } else {
         const data = await response.json();
         const text = data.choices?.[0]?.message?.content?.trim() || "I wasn't able to generate a response.";
-        return saveChatResponse(req.user.id, messages, text, res);
+        return saveChatResponse(req.user.id, messages, text, res, [], { provider: "groq" });
       }
     } catch (err) {
       console.error("Groq error:", err);
@@ -173,7 +182,7 @@ router.post("/chat", async (req, res) => {
         .join("\n")
         .trim();
 
-      return saveChatResponse(req.user.id, messages, text, res);
+      return saveChatResponse(req.user.id, messages, text, res, [], { provider: "anthropic" });
     } catch (err) {
       console.error("AI chat error:", err);
       const fallbackText = buildOfflineMedicalAnswer(messages);

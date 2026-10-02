@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildOfflineMedicalAnswer } from './ai.routes.js';
+import { buildOfflineMedicalAnswer, getPrimaryAiProvider } from './ai.routes.js';
 
 test('offline answer stays supportive and non-diagnostic for symptom questions', () => {
   const answer = buildOfflineMedicalAnswer([
@@ -37,4 +37,14 @@ test('offline answer is transparent when no supported topic matches', () => {
 
   assert.match(answer, /can't generate a tailored answer/i);
   assert.match(answer, /healthcare professional/i);
+});
+
+test('Groq is preferred when a Groq key is configured', () => {
+  assert.equal(getPrimaryAiProvider({ groqKey: 'set', geminiKey: 'set' }), 'groq');
+});
+
+test('provider selection falls back to Gemini, Anthropic, then offline', () => {
+  assert.equal(getPrimaryAiProvider({ geminiKey: 'set' }), 'gemini');
+  assert.equal(getPrimaryAiProvider({ anthropicKey: 'set' }), 'anthropic');
+  assert.equal(getPrimaryAiProvider({}), 'offline');
 });
