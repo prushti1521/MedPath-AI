@@ -19,6 +19,7 @@ import historyRoutes from "./routes/history.routes.js";
 import remindersRoutes from "./routes/reminders.routes.js";
 import conversationsRoutes from "./routes/conversations.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
+import { isAllowedOrigin } from "./corsOrigins.js";
 
 dotenv.config();
 
@@ -60,6 +61,7 @@ const allowedOrigins = [
   "http://localhost:5175",
   "http://localhost:5176",
   "http://localhost:5177",
+  "http://localhost:5178",
   "http://localhost:5179",
   ...(process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",").map(o => o.trim()) : [])
 ];
@@ -67,7 +69,7 @@ const allowedOrigins = [
 // CORS must run before helmet to allow cross-origin requests
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    if (isAllowedOrigin(origin, allowedOrigins)) return cb(null, true);
     cb(new Error("CORS: origin not allowed"));
   },
   credentials: true,
