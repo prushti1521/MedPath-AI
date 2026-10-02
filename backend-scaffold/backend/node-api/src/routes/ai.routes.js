@@ -19,6 +19,7 @@ router.post("/chat", async (req, res) => {
   const geminiKey = process.env.GEMINI_API_KEY;
   const groqKey = process.env.GROQ_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const geminiModel = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 
   const { messages } = req.body;
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -33,7 +34,7 @@ router.post("/chat", async (req, res) => {
 
   if (geminiKey) {
     try {
-      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
