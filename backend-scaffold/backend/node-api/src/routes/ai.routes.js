@@ -15,6 +15,35 @@ If the user describes their own symptoms, answer the general health question ins
 
 Use concise paragraphs or bullets (usually 4-8 sentences). Do not claim a list of causes or side effects is exhaustive. End with a short disclaimer that the answer is educational, not a diagnosis or personal medical advice. Politely redirect unrelated questions to health topics. When search results are available, prefer official health agencies and academic medical sources and cite the returned sources.`;
 
+export function buildOfflineMedicalAnswer(messages) {
+  const lastUserMessage = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+  const prompt = String(lastUserMessage).trim();
+  const lower = prompt.toLowerCase();
+
+  const emergencySignals = [
+    "chest pain", "trouble breathing", "difficulty breathing", "blue lips",
+    "severe bleeding", "won't stop bleeding", "cant breathe", "seizure",
+    "passed out", "unconscious", "suicidal", "self harm", "self-harm"
+  ];
+
+  if (emergencySignals.some((signal) => lower.includes(signal))) {
+    return "This could be an emergency. Seek urgent or emergency care right away if symptoms are severe, worsening, or you are having trouble breathing, chest pain, fainting, severe bleeding, or a mental health crisis. Tell the clinician exactly what you are feeling and when it started, because symptom patterns matter. This is general educational guidance, not a diagnosis or personal medical advice. If you are in immediate danger or your symptoms are rapidly worsening, call emergency services now.";
+  }
+
+  const generalAnswer = [
+    "Common causes can include stress, infections, medication side effects, dehydration, poor sleep, or a medical condition needing assessment.",
+    "A clinician may ask about when the symptom started, how severe it is, what makes it better or worse, and whether you have other symptoms such as fever, shortness of breath, or pain.",
+    "For symptoms that are severe, ongoing, or changing quickly, it is safer to seek medical care rather than waiting. For routine questions, rest, hydration, and a symptom diary can help you track patterns.",
+    "This response is educational guidance only and is not a diagnosis or personal medical advice. If the condition is not improving or is getting worse, speak with a healthcare professional or use the app's symptom-check tools."
+  ];
+
+  if (/asthma|breath|wheezing|cough|fever|fatigue|headache|nausea|dizziness|pain|infection|medication|medicine|pill/i.test(lower)) {
+    return `${prompt ? `Based on your question about "${prompt.slice(0, 180)}"` : "Based on the symptoms you described"}, the most common possibilities include a mild illness, inflammation, medication effects, dehydration, or stress-related symptoms. ${generalAnswer.join(" ")}`;
+  }
+
+  return `Based on the information provided, common causes can include a medication effect, an illness, stress, dehydration, or a condition that needs a clinician's assessment. ${generalAnswer.slice(1).join(" ")}`;
+}
+
 router.post("/chat", async (req, res) => {
   const geminiKey = process.env.GEMINI_API_KEY;
   const groqKey = process.env.GROQ_API_KEY;
@@ -26,10 +55,8 @@ router.post("/chat", async (req, res) => {
     return res.status(400).json({ error: "messages array is required." });
   }
   if (!geminiKey && !groqKey && !anthropicKey) {
-    return res.status(503).json({
-      code: "AI_PROVIDER_NOT_CONFIGURED",
-      error: "Ask AI needs a Gemini, Groq, or Anthropic API key configured on the server.",
-    });
+    const text = buildOfflineMedicalAnswer(messages);
+    return saveChatResponse(req.user.id, messages, text, res, [], { provider: "offline", mode: "offline_fallback" });
   }
 
   if (geminiKey) {
@@ -55,20 +82,23 @@ router.post("/chat", async (req, res) => {
         const err = await response.json().catch(() => ({}));
         console.error("Gemini API error:", err?.error?.message || response.status);
         if (!groqKey && !anthropicKey) {
-          return res.status(response.status).json({ error: err?.error?.message || "Gemini request failed." });
+          const text = buildOfflineMedicalAnswer(messages);
+          return saveChatResponse(req.user.id, messages, text, res, [], { provider: "offline", mode: "offline_fallback" });
         }
       } else {
         const data = await response.json();
         const { text, sources } = extractGeminiResponse(data);
         if (text) return saveChatResponse(req.user.id, messages, text, res, sources);
         if (!groqKey && !anthropicKey) {
-          return res.status(502).json({ error: "Gemini returned no answer. Please try again." });
+          const fallbackText = buildOfflineMedicalAnswer(messages);
+          return saveChatResponse(req.user.id, messages, fallbackText, res, [], { provider: "offline", mode: "offline_fallback" });
         }
       }
     } catch (err) {
       console.error("Gemini error:", err.message);
       if (!groqKey && !anthropicKey) {
-        return res.status(502).json({ error: "Could not reach the Gemini service. Please try again." });
+        const fallbackText = buildOfflineMedicalAnswer(messages);
+        return saveChatResponse(req.user.id, messages, fallbackText, res, [], { provider: "offline", mode: "offline_fallback" });
       }
     }
   }
@@ -97,7 +127,8 @@ router.post("/chat", async (req, res) => {
         console.error("Groq API error:", err);
         // Fall through to Anthropic if available
         if (!anthropicKey) {
-          return res.status(response.status).json({ error: err?.error?.message || "AI request failed." });
+          const fallbackText = buildOfflineMedicalAnswer(messages);
+          return saveChatResponse(req.user.id, messages, fallbackText, res, [], { provider: "offline", mode: "offline_fallback" });
         }
       } else {
         const data = await response.json();
@@ -107,7 +138,8 @@ router.post("/chat", async (req, res) => {
     } catch (err) {
       console.error("Groq error:", err);
       if (!anthropicKey) {
-        return res.status(502).json({ error: "Could not reach the AI service. Please try again." });
+        const fallbackText = buildOfflineMedicalAnswer(messages);
+        return saveChatResponse(req.user.id, messages, fallbackText, res, [], { provider: "offline", mode: "offline_fallback" });
       }
     }
   }
@@ -133,7 +165,8 @@ router.post("/chat", async (req, res) => {
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         console.error("Anthropic API error:", err);
-        return res.status(response.status).json({ error: err?.error?.message || "AI request failed." });
+        const fallbackText = buildOfflineMedicalAnswer(messages);
+        return saveChatResponse(req.user.id, messages, fallbackText, res, [], { provider: "offline", mode: "offline_fallback" });
       }
 
       const data = await response.json();
@@ -146,11 +179,13 @@ router.post("/chat", async (req, res) => {
       return saveChatResponse(req.user.id, messages, text, res);
     } catch (err) {
       console.error("AI chat error:", err);
-      return res.status(502).json({ error: "Could not reach the AI service. Please try again." });
+      const fallbackText = buildOfflineMedicalAnswer(messages);
+      return saveChatResponse(req.user.id, messages, fallbackText, res, [], { provider: "offline", mode: "offline_fallback" });
     }
   }
 
-  return res.status(503).json({ error: "No configured AI provider could answer this request." });
+  const fallbackText = buildOfflineMedicalAnswer(messages);
+  return saveChatResponse(req.user.id, messages, fallbackText, res, [], { provider: "offline", mode: "offline_fallback" });
 });
 
 export function extractGeminiResponse(data) {
@@ -173,7 +208,7 @@ export function extractGeminiResponse(data) {
   return { text, sources: sources.slice(0, 5) };
 }
 
-async function saveChatResponse(userId, messages, text, res, sources = []) {
+async function saveChatResponse(userId, messages, text, res, sources = [], extra = {}) {
   try {
     const lastUserMessage = [...messages].reverse().find((message) => message.role === "user");
     const conversation = await query(
@@ -191,10 +226,10 @@ async function saveChatResponse(userId, messages, text, res, sources = []) {
       `INSERT INTO ai_responses (conversation_id, role, content) VALUES ($1, $2, $3)`,
       [conversationId, "assistant", text]
     );
-    return res.json({ text, conversationId, sources });
+    return res.json({ text, conversationId, sources, ...extra });
   } catch (err) {
     console.error("AI response persistence error:", err);
-    return res.json({ text, sources });
+    return res.json({ text, sources, ...extra });
   }
 }
 
