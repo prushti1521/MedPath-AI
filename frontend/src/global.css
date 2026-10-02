@@ -251,7 +251,7 @@ table {
 
 	.auth-brand {
 		min-height: 0;
-		padding: 24px 22px 28px;
+		padding: calc(24px + env(safe-area-inset-top)) 22px 28px;
 		gap: 26px;
 	}
 
@@ -307,6 +307,14 @@ table {
 
 	.main-content {
 		padding: 20px 14px 92px !important;
+	}
+
+	.mobile-topbar-brand {
+		padding-top: calc(14px + env(safe-area-inset-top)) !important;
+	}
+
+	.mobile-tabbar {
+		padding-bottom: calc(8px + env(safe-area-inset-bottom)) !important;
 	}
 }
 

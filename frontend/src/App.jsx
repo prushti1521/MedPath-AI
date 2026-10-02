@@ -2208,7 +2208,7 @@ export default function App() {
 
       {/* Mobile top bar */}
       {isLoggedIn && (
-        <div className="mobile-topbar" style={{ position: "sticky", top: 0, zIndex: 20, background: T.tealDeep, color: "#fff", padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="mobile-topbar mobile-topbar-brand" style={{ position: "sticky", top: 0, zIndex: 20, background: T.tealDeep, color: "#fff", padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ width: 26, height: 26, borderRadius: 7, background: T.clay, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <HeartPulse size={14} color="#fff" />
