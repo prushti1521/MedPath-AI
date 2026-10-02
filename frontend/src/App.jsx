@@ -804,6 +804,11 @@ function Field({ label, children }) {
 }
 const inputStyle = { width: "100%", border: `1px solid ${T.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, fontFamily: "Inter, sans-serif", boxSizing: "border-box", color: T.ink };
 
+function dateInputValue(value) {
+  const match = String(value ?? "").match(/^(\d{4}-\d{2}-\d{2})/);
+  return match?.[1] || "";
+}
+
 function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
   const [error, setError] = useState("");
   const [saveStatus, setSaveStatus] = useState("idle");
@@ -861,7 +866,7 @@ function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
         email: data.profile.email ?? p.email,
         phoneNumber: data.profile.phone_number ?? p.phoneNumber,
         profilePhotoPath: data.profile.profile_photo_path ?? p.profilePhotoPath,
-        dateOfBirth: data.profile.date_of_birth ?? p.dateOfBirth,
+        dateOfBirth: dateInputValue(data.profile.date_of_birth ?? p.dateOfBirth),
         age: data.profile.age ?? p.age,
         gender: data.profile.sex ?? p.gender,
         bloodType: data.profile.blood_type ?? p.bloodType,
@@ -983,7 +988,7 @@ function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
           </Field>
           <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Date of birth">
-              <input style={inputStyle} type="date" value={profile.dateOfBirth} onChange={(e) => update("dateOfBirth", e.target.value)} />
+              <input style={inputStyle} type="date" value={dateInputValue(profile.dateOfBirth)} onChange={(e) => update("dateOfBirth", e.target.value)} />
             </Field>
             <Field label="Age">
               <input style={inputStyle} type="number" value={profile.age} onChange={(e) => update("age", e.target.value)} placeholder="34" />
@@ -1918,7 +1923,7 @@ export default function App() {
           email: data.profile.email || profile.email,
           phoneNumber: data.profile.phone_number || data.profile.phoneNumber || profile.phoneNumber,
           profilePhotoPath: data.profile.profile_photo_path || data.profile.profilePhotoPath || profile.profilePhotoPath,
-          dateOfBirth: data.profile.date_of_birth || data.profile.dateOfBirth || profile.dateOfBirth,
+          dateOfBirth: dateInputValue(data.profile.date_of_birth || data.profile.dateOfBirth || profile.dateOfBirth),
           age: data.profile.age || profile.age,
           gender: data.profile.sex || data.profile.gender || profile.gender,
           bloodType: data.profile.blood_type || data.profile.bloodType || profile.bloodType,
