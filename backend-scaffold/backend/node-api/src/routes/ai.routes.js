@@ -30,18 +30,15 @@ export function buildOfflineMedicalAnswer(messages) {
     return "This could be an emergency. Seek urgent or emergency care right away if symptoms are severe, worsening, or you are having trouble breathing, chest pain, fainting, severe bleeding, or a mental health crisis. Tell the clinician exactly what you are feeling and when it started, because symptom patterns matter. This is general educational guidance, not a diagnosis or personal medical advice. If you are in immediate danger or your symptoms are rapidly worsening, call emergency services now.";
   }
 
-  const generalAnswer = [
-    "Common causes can include stress, infections, medication side effects, dehydration, poor sleep, or a medical condition needing assessment.",
-    "A clinician may ask about when the symptom started, how severe it is, what makes it better or worse, and whether you have other symptoms such as fever, shortness of breath, or pain.",
-    "For symptoms that are severe, ongoing, or changing quickly, it is safer to seek medical care rather than waiting. For routine questions, rest, hydration, and a symptom diary can help you track patterns.",
-    "This response is educational guidance only and is not a diagnosis or personal medical advice. If the condition is not improving or is getting worse, speak with a healthcare professional or use the app's symptom-check tools."
-  ];
-
-  if (/asthma|breath|wheezing|cough|fever|fatigue|headache|nausea|dizziness|pain|infection|medication|medicine|pill/i.test(lower)) {
-    return `${prompt ? `Based on your question about "${prompt.slice(0, 180)}"` : "Based on the symptoms you described"}, the most common possibilities include a mild illness, inflammation, medication effects, dehydration, or stress-related symptoms. ${generalAnswer.join(" ")}`;
+  if (/\basthma\b/.test(lower)) {
+    return "Asthma is a long-term condition in which the airways can become inflamed and narrowed, making breathing harder. Common symptoms include wheezing, coughing, chest tightness, and shortness of breath; they can vary over time and may be triggered by things such as exercise, smoke, allergens, or respiratory infections. Clinicians can assess asthma using your history and breathing tests. Treatment plans vary, so discuss symptoms and medicines with a healthcare professional rather than changing medication on your own. Severe trouble breathing, difficulty speaking, or blue lips needs emergency care. This is educational information, not a diagnosis or personal medical advice.";
   }
 
-  return `Based on the information provided, common causes can include a medication effect, an illness, stress, dehydration, or a condition that needs a clinician's assessment. ${generalAnswer.slice(1).join(" ")}`;
+  if (/\b(headaches?|migraines?)\b/.test(lower)) {
+    return "Headaches can have many causes, including tension, migraine, illness, dehydration, sleep disruption, or medication effects; symptoms alone cannot identify the cause. A clinician may consider when it began, its pattern and severity, associated symptoms, and medicines you take. Seek emergency care for a sudden severe headache, or one with weakness, confusion, fainting, vision loss, fever with a stiff neck, or after a head injury. If headaches are new, frequent, worsening, or not improving, contact a healthcare professional. This is educational information, not a diagnosis or personal medical advice.";
+  }
+
+  return "I can't generate a tailored answer right now because the AI provider is unavailable. For personal symptoms, use the app's Symptom Check or contact a healthcare professional; seek urgent care for severe or rapidly worsening symptoms. This is educational guidance only, not a diagnosis or personal medical advice.";
 }
 
 router.post("/chat", async (req, res) => {
