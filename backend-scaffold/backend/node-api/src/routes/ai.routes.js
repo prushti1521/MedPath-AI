@@ -4,6 +4,7 @@ import { query } from "../db/pool.js";
 
 const router = Router();
 router.use(requireAuth);
+export const DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b";
 
 const SYSTEM_PROMPT = `You are the "Ask AI" health education assistant inside MedPath AI. Give useful, accurate, plain-language information about health topics.
 
@@ -53,7 +54,7 @@ router.post("/chat", async (req, res) => {
   const groqKey = process.env.GROQ_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const geminiModel = process.env.GEMINI_MODEL || "gemini-3.8-flash";
-  const groqModel = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
+  const groqModel = process.env.GROQ_MODEL || DEFAULT_GROQ_MODEL;
   const primaryProvider = getPrimaryAiProvider({ geminiKey, groqKey, anthropicKey });
 
   const { messages } = req.body;
