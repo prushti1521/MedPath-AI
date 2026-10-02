@@ -936,13 +936,13 @@ function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
         <Card>
           <div style={{ fontWeight: 600, marginBottom: 14, color: T.ink }}>Personal details</div>
           <Field label="Full name">
-            <input style={inputStyle} value={profile.name} onChange={(e) => update("name", e.target.value)} placeholder="Jordan Ellis" />
+            <input style={inputStyle} value={profile.name} onChange={(e) => update("name", e.target.value)} placeholder="Full name" />
           </Field>
           <Field label="Email">
-            <input style={inputStyle} type="email" value={profile.email} onChange={(e) => update("email", e.target.value)} placeholder="jordan@example.com" />
+            <input style={inputStyle} type="email" value={profile.email} onChange={(e) => update("email", e.target.value)} placeholder="Email address" />
           </Field>
           <Field label="Phone number">
-            <input style={inputStyle} type="tel" value={profile.phoneNumber} onChange={(e) => update("phoneNumber", e.target.value)} placeholder="(415) 555-0124" />
+            <input style={inputStyle} type="tel" value={profile.phoneNumber} onChange={(e) => update("phoneNumber", e.target.value)} placeholder="Phone number" />
           </Field>
           <Field label="Profile photo">
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -991,7 +991,7 @@ function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
               <input style={inputStyle} type="date" value={dateInputValue(profile.dateOfBirth)} onChange={(e) => update("dateOfBirth", e.target.value)} />
             </Field>
             <Field label="Age">
-              <input style={inputStyle} type="number" value={profile.age} onChange={(e) => update("age", e.target.value)} placeholder="34" />
+              <input style={inputStyle} type="number" value={profile.age} onChange={(e) => update("age", e.target.value)} placeholder="Age" />
             </Field>
           </div>
           <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -1016,15 +1016,15 @@ function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
         <Card>
           <div style={{ fontWeight: 600, marginBottom: 14, color: T.ink }}>Health & coverage</div>
           <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Height (cm)"><input style={inputStyle} type="number" value={profile.height} onChange={(e) => update("height", e.target.value)} placeholder="170" /></Field>
-            <Field label="Weight (kg)"><input style={inputStyle} type="number" value={profile.weight} onChange={(e) => update("weight", e.target.value)} placeholder="68" /></Field>
+            <Field label="Height (cm)"><input style={inputStyle} type="number" value={profile.height} onChange={(e) => update("height", e.target.value)} placeholder="Height" /></Field>
+            <Field label="Weight (kg)"><input style={inputStyle} type="number" value={profile.weight} onChange={(e) => update("weight", e.target.value)} placeholder="Weight" /></Field>
           </div>
-          <Field label="Insurance provider"><input style={inputStyle} value={profile.insuranceProvider} onChange={(e) => update("insuranceProvider", e.target.value)} placeholder="HealthFirst" /></Field>
-          <Field label="Emergency contact"><input style={inputStyle} value={profile.emergencyContact} onChange={(e) => update("emergencyContact", e.target.value)} placeholder="Alex Ellis — (415) 555-0146" /></Field>
-          <Field label="Address"><input style={inputStyle} value={profile.address} onChange={(e) => update("address", e.target.value)} placeholder="120 Market St, San Francisco, CA" /></Field>
+          <Field label="Insurance provider"><input style={inputStyle} value={profile.insuranceProvider} onChange={(e) => update("insuranceProvider", e.target.value)} placeholder="Insurance provider" /></Field>
+          <Field label="Emergency contact"><input style={inputStyle} value={profile.emergencyContact} onChange={(e) => update("emergencyContact", e.target.value)} placeholder="Emergency contact" /></Field>
+          <Field label="Address"><input style={inputStyle} value={profile.address} onChange={(e) => update("address", e.target.value)} placeholder="Address" /></Field>
           <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Country"><input style={inputStyle} value={profile.country} onChange={(e) => update("country", e.target.value)} placeholder="USA" /></Field>
-            <Field label="Preferred language"><input style={inputStyle} value={profile.preferredLanguage} onChange={(e) => update("preferredLanguage", e.target.value)} placeholder="English" /></Field>
+            <Field label="Country"><input style={inputStyle} value={profile.country} onChange={(e) => update("country", e.target.value)} placeholder="Country" /></Field>
+            <Field label="Preferred language"><input style={inputStyle} value={profile.preferredLanguage} onChange={(e) => update("preferredLanguage", e.target.value)} placeholder="Preferred language" /></Field>
           </div>
         </Card>
       </div>
@@ -1846,29 +1846,33 @@ const NAV = [
 ];
 const MOBILE_NAV_KEYS = ["home", "symptom", "timeline", "appointments", "profile"];
 
+function createEmptyProfile() {
+  return {
+    name: "",
+    email: "",
+    phoneNumber: "",
+    profilePhotoPath: "",
+    dateOfBirth: "",
+    age: "",
+    gender: "",
+    bloodType: "",
+    height: "",
+    weight: "",
+    insuranceProvider: "",
+    emergencyContact: "",
+    address: "",
+    country: "",
+    preferredLanguage: "",
+    allergies: [],
+    conditions: [],
+  };
+}
+
 export default function App() {
   const initialToken = typeof window !== "undefined" ? localStorage.getItem("AUTH_TOKEN") || localStorage.getItem("authToken") : "";
   const [page, setPage] = useState(initialToken ? "home" : "login");
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [profile, setProfile] = useState({
-    name: "Jordan Ellis",
-    email: "jordan.ellis@example.com",
-    phoneNumber: "(415) 555-0124",
-    profilePhotoPath: "",
-    dateOfBirth: "1990-04-23",
-    age: "34",
-    gender: "Female",
-    bloodType: "O+",
-    height: "170",
-    weight: "68",
-    insuranceProvider: "HealthFirst",
-    emergencyContact: "Alex Ellis — (415) 555-0146",
-    address: "120 Market St, San Francisco, CA",
-    country: "USA",
-    preferredLanguage: "English",
-    allergies: ["Penicillin"],
-    conditions: ["Asthma"],
-  });
+  const [profile, setProfile] = useState(createEmptyProfile);
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [authToken, setAuthToken] = useState(initialToken);
@@ -1907,6 +1911,7 @@ export default function App() {
     if (!authToken) {
       setDashboardData(null);
       setAuthUser(null);
+      setProfile(createEmptyProfile());
       setAvatarMenuOpen(false);
       return;
     }
@@ -1928,26 +1933,26 @@ export default function App() {
         if (!res.ok) throw new Error("Unable to load profile.");
         const data = await res.json();
         const profileData = {
-          name: data.profile.full_name || data.profile.fullName || data.profile.name || profile.name,
-          email: data.profile.email || profile.email,
-          phoneNumber: data.profile.phone_number || data.profile.phoneNumber || profile.phoneNumber,
-          profilePhotoPath: data.profile.profile_photo_path || data.profile.profilePhotoPath || profile.profilePhotoPath,
-          dateOfBirth: dateInputValue(data.profile.date_of_birth || data.profile.dateOfBirth || profile.dateOfBirth),
-          age: data.profile.age || profile.age,
-          gender: data.profile.sex || data.profile.gender || profile.gender,
-          bloodType: data.profile.blood_type || data.profile.bloodType || profile.bloodType,
-          height: data.profile.height_cm || data.profile.height || profile.height,
-          weight: data.profile.weight_kg || data.profile.weight || profile.weight,
-          insuranceProvider: data.profile.insurance_provider || data.profile.insuranceProvider || profile.insuranceProvider,
-          emergencyContact: data.profile.emergency_contact || data.profile.emergencyContact || profile.emergencyContact,
-          address: data.profile.address || profile.address,
-          country: data.profile.country || profile.country,
-          preferredLanguage: data.profile.preferred_language || data.profile.preferredLanguage || profile.preferredLanguage,
-          allergies: data.allergies || profile.allergies,
-          conditions: data.conditions || profile.conditions,
+          name: data.profile.full_name ?? data.profile.fullName ?? data.profile.name ?? "",
+          email: data.profile.email ?? "",
+          phoneNumber: data.profile.phone_number ?? data.profile.phoneNumber ?? "",
+          profilePhotoPath: data.profile.profile_photo_path ?? data.profile.profilePhotoPath ?? "",
+          dateOfBirth: dateInputValue(data.profile.date_of_birth ?? data.profile.dateOfBirth),
+          age: data.profile.age ?? "",
+          gender: data.profile.sex ?? data.profile.gender ?? "",
+          bloodType: data.profile.blood_type ?? data.profile.bloodType ?? "",
+          height: data.profile.height_cm ?? data.profile.height ?? "",
+          weight: data.profile.weight_kg ?? data.profile.weight ?? "",
+          insuranceProvider: data.profile.insurance_provider ?? data.profile.insuranceProvider ?? "",
+          emergencyContact: data.profile.emergency_contact ?? data.profile.emergencyContact ?? "",
+          address: data.profile.address ?? "",
+          country: data.profile.country ?? "",
+          preferredLanguage: data.profile.preferred_language ?? data.profile.preferredLanguage ?? "",
+          allergies: data.allergies ?? [],
+          conditions: data.conditions ?? [],
         };
 
-        setProfile((p) => ({ ...p, ...profileData }));
+        setProfile(profileData);
         setAuthUser({ name: profileData.name, email: profileData.email });
       } catch (err) {
         console.error(err);
