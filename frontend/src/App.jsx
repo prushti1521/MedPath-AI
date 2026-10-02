@@ -3,7 +3,7 @@ import {
   Home, Stethoscope, UserCircle, Activity, CalendarCheck, MapPin,
   MessageCircleQuestion, AlertTriangle, Phone, ChevronRight, ChevronLeft,
   Check, X, Plus, Trash2, Upload, Search, Star, Clock, ShieldAlert,
-  HeartPulse, Sparkles, Send, Menu, FileText, Pill as PillIcon
+  HeartPulse, Sparkles, Send, Menu, LogOut, FileText, Pill as PillIcon
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
@@ -2023,6 +2023,7 @@ export default function App() {
     }
     setAuthToken("");
     setAuthUser(null);
+    setMobileOpen(false);
     localStorage.removeItem("AUTH_TOKEN");
     setDashboardData(null);
     setPage("login");
@@ -2215,7 +2216,16 @@ export default function App() {
             </div>
             <span style={{ fontFamily: "Fraunces, serif", fontSize: 15.5 }}>MedPath AI</span>
           </div>
-          <Menu size={22} onClick={() => setMobileOpen((o) => !o)} style={{ cursor: "pointer" }} />
+          <button
+            type="button"
+            className="mobile-menu-toggle"
+            aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
+            aria-expanded={mobileOpen}
+            onClick={() => setMobileOpen((open) => !open)}
+            style={{ display: "grid", placeItems: "center", width: 44, height: 44, border: "1px solid rgba(255,255,255,0.22)", borderRadius: 8, background: "transparent", color: "#fff", cursor: "pointer" }}
+          >
+            {mobileOpen ? <X size={21} /> : <Menu size={21} />}
+          </button>
         </div>
       )}
       {mobileOpen && isLoggedIn && (
@@ -2225,6 +2235,10 @@ export default function App() {
               <n.icon size={16} />{n.label}
             </button>
           ))}
+          <div style={{ height: 1, margin: "8px 6px", background: "rgba(255,255,255,0.2)" }} />
+          <button type="button" onClick={logout} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 44, padding: "10px", border: "1px solid rgba(255,255,255,0.24)", borderRadius: 8, background: "transparent", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>
+            <LogOut size={16} />Sign out
+          </button>
         </div>
       )}
 
