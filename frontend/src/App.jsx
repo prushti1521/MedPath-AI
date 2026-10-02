@@ -3,7 +3,7 @@ import {
   Home, Stethoscope, UserCircle, Activity, CalendarCheck, MapPin,
   MessageCircleQuestion, AlertTriangle, Phone, ChevronRight, ChevronLeft,
   Check, X, Plus, Trash2, Upload, Search, Star, Clock, ShieldAlert,
-  HeartPulse, Sparkles, Send, Menu, Languages, FileText, Pill as PillIcon
+  HeartPulse, Sparkles, Send, Menu, FileText, Pill as PillIcon
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
@@ -379,98 +379,121 @@ function LoginPage({ onLogin }) {
   const isLoginMode = mode === "login";
 
   return (
-    <div style={{ maxWidth: 440, margin: "0 auto", paddingTop: 40 }}>
-      <Card style={{ padding: 28, maxWidth: 480, margin: "0 auto" }}>
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ color: T.clayDeep, fontSize: 12.5, letterSpacing: 1, fontWeight: 700, textTransform: "uppercase" }}>
-            {isLoginMode ? "Sign in" : "Create account"}
-          </div>
-          <h2 style={{ margin: "10px 0 0", fontFamily: "Fraunces, serif", fontSize: 28 }}>
-            {isLoginMode ? "Welcome back to MedPath AI" : "Join MedPath AI"}
-          </h2>
-          <p style={{ color: T.inkSoft, lineHeight: 1.6, marginTop: 10 }}>
-            {isLoginMode
-              ? "Enter your email and password to access your personal health dashboard."
-              : "Create an account to get started with your personal health dashboard."}
-          </p>
+    <div className="auth-shell">
+      <section className="auth-brand" aria-label="MedPath AI">
+        <div className="auth-brand-lockup">
+          <span className="auth-logo-mark"><HeartPulse size={22} color="#fff" strokeWidth={2.2} /></span>
+          <span className="auth-brand-name">MedPath <span>AI</span></span>
         </div>
-        <div style={{ display: "grid", gap: 14 }}>
-          {!isLoginMode && (
-            <label style={{ display: "block" }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: T.inkSoft, marginBottom: 6 }}>Full name</div>
+        <div className="auth-brand-copy">
+          <div className="auth-eyebrow">CARE, MADE CLEARER</div>
+          <h1>{isLoginMode ? "Your health journey, in one place." : "A clearer next step starts here."}</h1>
+          <p>Keep track of symptoms, prepare for appointments, and make sense of health information with tools designed to support your care.</p>
+        </div>
+        <div className="auth-brand-foot">
+          <HeartPulse size={17} aria-hidden="true" />
+          <span>Helpful guidance, with your care at the center.</span>
+        </div>
+      </section>
+
+      <section className="auth-panel">
+        <div className="auth-form-wrap">
+          <div className="auth-form-eyebrow">{isLoginMode ? "YOUR HEALTH, AT A GLANCE" : "GET STARTED"}</div>
+          <h2>{isLoginMode ? "Welcome back" : "Create your account"}</h2>
+          <p className="auth-form-intro">
+            {isLoginMode
+              ? "Sign in to continue to your personal health dashboard."
+              : "Set up your account to keep your health journey organized."}
+          </p>
+
+          <form
+            className="auth-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              (isLoginMode ? handleLogin : handleSignup)();
+            }}
+          >
+            {!isLoginMode && (
+              <label className="auth-field">
+                <span>Full name</span>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  style={inputStyle}
+                  type="text"
+                  autoComplete="name"
+                  placeholder="Your full name"
+                  required
+                />
+              </label>
+            )}
+            <label className="auth-field">
+              <span>Email address</span>
               <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 style={inputStyle}
-                type="text"
-                placeholder="John Doe"
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                required
               />
             </label>
-          )}
-          <label style={{ display: "block" }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: T.inkSoft, marginBottom: 6 }}>Email</div>
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={inputStyle}
-              type="email"
-              placeholder="you@example.com"
-            />
-          </label>
-          <label style={{ display: "block" }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: T.inkSoft, marginBottom: 6 }}>Password</div>
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={inputStyle}
-              type="password"
-              placeholder="••••••••"
-            />
-          </label>
-          {!isLoginMode && (
-            <label style={{ display: "block" }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: T.inkSoft, marginBottom: 6 }}>Confirm password</div>
+            <label className="auth-field">
+              <span>Password</span>
               <input
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 style={inputStyle}
                 type="password"
-                placeholder="••••••••"
+                autoComplete={isLoginMode ? "current-password" : "new-password"}
+                placeholder="Enter your password"
+                required
               />
             </label>
-          )}
-          {error && <div style={{ color: T.red, fontSize: 13 }}>{error}</div>}
-          <PrimaryButton
-            onClick={isLoginMode ? handleLogin : handleSignup}
-            disabled={
-              loading ||
-              !email ||
-              !password ||
-              (!isLoginMode && (!name || password !== confirmPassword))
-            }
-          >
-            {loading ? (isLoginMode ? "Signing in…" : "Creating account…") : isLoginMode ? "Sign in" : "Create account"}
-          </PrimaryButton>
-          <div style={{ textAlign: "center", marginTop: 12 }}>
+            {!isLoginMode && (
+              <label className="auth-field">
+                <span>Confirm password</span>
+                <input
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  style={inputStyle}
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Enter your password again"
+                  required
+                />
+              </label>
+            )}
+            {error && <div className="auth-error" role="alert">{error}</div>}
+            <PrimaryButton
+              disabled={
+                loading ||
+                !email ||
+                !password ||
+                (!isLoginMode && (!name || password !== confirmPassword))
+              }
+              style={{ width: "100%", justifyContent: "center", marginTop: 4 }}
+            >
+              {loading ? (isLoginMode ? "Signing in…" : "Creating account…") : isLoginMode ? "Sign in" : "Create account"}
+            </PrimaryButton>
+          </form>
+
+          <div className="auth-mode-switch">
+            <span>{isLoginMode ? "New to MedPath AI?" : "Already have an account?"}</span>
             <button
+              type="button"
               onClick={() => {
                 setMode(isLoginMode ? "signup" : "login");
                 setError("");
               }}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: T.teal,
-                cursor: "pointer",
-                fontSize: 13,
-                textDecoration: "underline",
-              }}
             >
-              {isLoginMode ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
+              {isLoginMode ? "Create account" : "Sign in"}
             </button>
           </div>
+          <p className="auth-legal">Educational health information is not a substitute for professional medical advice.</p>
         </div>
-      </Card>
+      </section>
     </div>
   );
 }
@@ -904,7 +927,7 @@ function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
       {error && <p style={{ fontSize: 13, color: T.red, marginBottom: 14 }}>{error}</p>}
       {!canSave && <p style={{ fontSize: 13, color: T.inkSoft, marginTop: -10, marginBottom: 14 }}>No auth token found. Login later to persist changes to your account.</p>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: 16 }}>
         <Card>
           <div style={{ fontWeight: 600, marginBottom: 14, color: T.ink }}>Personal details</div>
           <Field label="Full name">
@@ -958,7 +981,7 @@ function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
               </div>
             </div>
           </Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Date of birth">
               <input style={inputStyle} type="date" value={profile.dateOfBirth} onChange={(e) => update("dateOfBirth", e.target.value)} />
             </Field>
@@ -966,7 +989,7 @@ function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
               <input style={inputStyle} type="number" value={profile.age} onChange={(e) => update("age", e.target.value)} placeholder="34" />
             </Field>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Gender">
               <select style={inputStyle} value={profile.gender} onChange={(e) => update("gender", e.target.value)}>
                 <option value="">Select</option>
@@ -987,14 +1010,14 @@ function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
 
         <Card>
           <div style={{ fontWeight: 600, marginBottom: 14, color: T.ink }}>Health & coverage</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Height (cm)"><input style={inputStyle} type="number" value={profile.height} onChange={(e) => update("height", e.target.value)} placeholder="170" /></Field>
             <Field label="Weight (kg)"><input style={inputStyle} type="number" value={profile.weight} onChange={(e) => update("weight", e.target.value)} placeholder="68" /></Field>
           </div>
           <Field label="Insurance provider"><input style={inputStyle} value={profile.insuranceProvider} onChange={(e) => update("insuranceProvider", e.target.value)} placeholder="HealthFirst" /></Field>
           <Field label="Emergency contact"><input style={inputStyle} value={profile.emergencyContact} onChange={(e) => update("emergencyContact", e.target.value)} placeholder="Alex Ellis — (415) 555-0146" /></Field>
           <Field label="Address"><input style={inputStyle} value={profile.address} onChange={(e) => update("address", e.target.value)} placeholder="120 Market St, San Francisco, CA" /></Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="responsive-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Country"><input style={inputStyle} value={profile.country} onChange={(e) => update("country", e.target.value)} placeholder="USA" /></Field>
             <Field label="Preferred language"><input style={inputStyle} value={profile.preferredLanguage} onChange={(e) => update("preferredLanguage", e.target.value)} placeholder="English" /></Field>
           </div>
@@ -1817,13 +1840,11 @@ const NAV = [
   { key: "profile", label: "Profile", icon: UserCircle },
 ];
 const MOBILE_NAV_KEYS = ["home", "symptom", "timeline", "appointments", "profile"];
-const LANGS = ["English", "Español", "Français", "हिन्दी", "ગુજરાતી", "中文"];
 
 export default function App() {
   const initialToken = typeof window !== "undefined" ? localStorage.getItem("AUTH_TOKEN") || localStorage.getItem("authToken") : "";
   const [page, setPage] = useState(initialToken ? "home" : "login");
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [lang, setLang] = useState("English");
   const [profile, setProfile] = useState({
     name: "Jordan Ellis",
     email: "jordan.ellis@example.com",
@@ -2153,13 +2174,7 @@ export default function App() {
           ))}
         </nav>
         <div style={{ marginTop: "auto", paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.12)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(255,255,255,0.65)", fontSize: 12.5, padding: "0 8px" }}>
-            <Languages size={14} />
-            <select value={lang} onChange={(e) => setLang(e.target.value)} style={{ background: "transparent", color: "rgba(255,255,255,0.85)", border: "none", fontSize: 12.5, fontFamily: "Inter, sans-serif" }}>
-              {LANGS.map((l) => <option key={l} style={{ color: "#000" }}>{l}</option>)}
-            </select>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <button
               onClick={logout}
               style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "transparent", color: "#fff", cursor: "pointer", fontWeight: 600 }}
@@ -2200,7 +2215,15 @@ export default function App() {
       )}
 
       {/* Main content */}
-      <main className="main-content" style={{ marginLeft: 236, padding: "36px 40px", maxWidth: 900 }}>
+      <main
+        className="main-content"
+        style={{
+          marginLeft: isLoggedIn ? 236 : 0,
+          padding: isLoggedIn ? "36px 40px" : 0,
+          maxWidth: isLoggedIn ? 900 : "none",
+          width: isLoggedIn ? "calc(100% - 236px)" : "100%",
+        }}
+      >
         {pageMap[page]}
       </main>
 
