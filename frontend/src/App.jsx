@@ -1916,6 +1916,15 @@ export default function App() {
         const res = await fetch(`${API_BASE}/profile`, {
           headers: { Authorization: `Bearer ${authToken}` },
         });
+        if (res.status === 401) {
+          localStorage.removeItem("AUTH_TOKEN");
+          localStorage.removeItem("authToken");
+          setAuthToken("");
+          setAuthUser(null);
+          setDashboardData(null);
+          setPage("login");
+          return;
+        }
         if (!res.ok) throw new Error("Unable to load profile.");
         const data = await res.json();
         const profileData = {
