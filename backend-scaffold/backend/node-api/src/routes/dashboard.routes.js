@@ -35,6 +35,7 @@ router.get("/", async (req, res, next) => {
   const emergencyCount = symptomCounts.emergency || 0;
   const urgentCount = symptomCounts.urgent || 0;
   const routineCount = symptomCounts.routine || 0;
+  const recentSymptomCount = emergencyCount + urgentCount + routineCount;
   const recentSymptoms = symptomsRes.rows;
   const recentReports = reportsRes.rows;
   const reminders = remindersRes.rows;
@@ -75,10 +76,15 @@ router.get("/", async (req, res, next) => {
     healthScore: score,
     healthScoreDetails: `Based on ${emergencyCount + urgentCount + routineCount} symptom entries and medication reminders.`,
     riskAlerts,
-    aiSuggestions: [
-      ...(recentReports.length === 0 ? ["Upload a lab report to get more personalized insights"] : []),
-      ...(emergencyCount > 0 ? ["Contact care if symptoms worsen"] : ["Ask AI for a monitoring plan"]),
-    ],
+    aiSuggestions: buildAiSuggestions({
+      emergencyCount,
+      urgentCount,
+      recentSymptomCount,
+      medicationCount: medicationReminders,
+      hasAppointment: Boolean(nextAppointment),
+      reportCount: recentReports.length,
+      reminderCount: reminders.length,
+    }),
     recentReports,
     reminders,
   };
@@ -88,3 +94,42 @@ router.get("/", async (req, res, next) => {
 });
 
 export default router;
+
+export function buildAiSuggestions({
+  emergencyCount,
+  urgentCount,
+  recentSymptomCount,
+  medicationCount,
+  hasAppointment,
+  reportCount,
+  reminderCount,
+}) {
+  const suggestions = [];
+
+  if (emergencyCount > 0) {
+    suggestions.push(`You logged ${emergencyCount} emergency-level symptom ${emergencyCount === 1 ? "entry" : "entries"} in the past 30 days. Review them with a clinician; seek urgent care for severe or worsening symptoms.`);
+  } else if (urgentCount > 0) {
+    suggestions.push(`You logged ${urgentCount} urgent symptom ${urgentCount === 1 ? "entry" : "entries"} in the past 30 days. Consider discussing them with your clinician, especially if they persist or worsen.`);
+  }
+
+  if (reminderCount > 0) {
+    suggestions.push(`You have ${reminderCount} upcoming or incomplete reminder${reminderCount === 1 ? "" : "s"}. Review due times and mark completed items done.`);
+  } else if (hasAppointment) {
+    suggestions.push("Prepare for your upcoming appointment by noting your questions and any recent symptom changes.");
+  }
+
+  if (suggestions.length < 2 && medicationCount > 0) {
+    suggestions.push(`Your profile lists ${medicationCount} active medication${medicationCount === 1 ? "" : "s"}. Keep the list current and discuss changes or side effects with your clinician or pharmacist.`);
+  }
+  if (suggestions.length < 2 && reportCount > 0) {
+    suggestions.push("You have recent medical reports saved. Review their results with your clinician.");
+  }
+  if (suggestions.length < 2 && recentSymptomCount > 0) {
+    suggestions.push(`You logged ${recentSymptomCount} symptom ${recentSymptomCount === 1 ? "entry" : "entries"} in the past 30 days. Tracking timing and changes can help you discuss patterns with your clinician.`);
+  }
+  if (suggestions.length === 0) {
+    suggestions.push("There is little recent health activity to personalize suggestions yet. Logging symptoms, appointments, or medications can make these insights more relevant.");
+  }
+
+  return suggestions.slice(0, 2);
+}
