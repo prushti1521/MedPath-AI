@@ -5,6 +5,9 @@ import { query } from "../db/pool.js";
 const router = Router();
 router.use(requireAuth);
 export const DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b";
+const GROQ_HISTORY_MESSAGES = 4;
+const GROQ_MESSAGE_CHAR_LIMIT = 1000;
+const GROQ_MAX_OUTPUT_TOKENS = 500;
 
 const SYSTEM_PROMPT = `You are the "Ask AI" health education assistant inside MedPath AI. Give useful, accurate, plain-language information about health topics.
 
@@ -47,6 +50,16 @@ export function getPrimaryAiProvider({ geminiKey, groqKey, anthropicKey }) {
   if (geminiKey) return "gemini";
   if (anthropicKey) return "anthropic";
   return "offline";
+}
+
+export function compactGroqHistory(messages) {
+  return messages
+    .filter((message) => message?.role === "user" || message?.role === "assistant")
+    .slice(-GROQ_HISTORY_MESSAGES)
+    .map((message) => ({
+      role: message.role,
+      content: String(message.content ?? "").slice(-GROQ_MESSAGE_CHAR_LIMIT),
+    }));
 }
 
 router.post("/chat", async (req, res) => {
@@ -121,10 +134,10 @@ router.post("/chat", async (req, res) => {
         },
         body: JSON.stringify({
           model: groqModel,
-          max_tokens: 1000,
+          max_tokens: GROQ_MAX_OUTPUT_TOKENS,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
-            ...messages,
+            ...compactGroqHistory(messages),
           ],
         }),
       });

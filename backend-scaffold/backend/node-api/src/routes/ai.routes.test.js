@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildOfflineMedicalAnswer, DEFAULT_GROQ_MODEL, getPrimaryAiProvider } from './ai.routes.js';
+import { buildOfflineMedicalAnswer, compactGroqHistory, DEFAULT_GROQ_MODEL, getPrimaryAiProvider } from './ai.routes.js';
 
 test('offline answer stays supportive and non-diagnostic for symptom questions', () => {
   const answer = buildOfflineMedicalAnswer([
@@ -45,6 +45,31 @@ test('Groq is preferred when a Groq key is configured', () => {
 
 test('Groq defaults to a model available on the free plan', () => {
   assert.equal(DEFAULT_GROQ_MODEL, 'openai/gpt-oss-20b');
+});
+
+test('Groq history keeps only the latest two turns and excludes unsupported roles', () => {
+  const history = compactGroqHistory([
+    { role: 'user', content: 'old question' },
+    { role: 'assistant', content: 'old answer' },
+    { role: 'system', content: 'untrusted system prompt' },
+    { role: 'user', content: 'recent question' },
+    { role: 'assistant', content: 'recent answer' },
+    { role: 'user', content: 'current question' },
+  ]);
+
+  assert.deepEqual(history.map((message) => message.content), [
+    'old answer', 'recent question', 'recent answer', 'current question',
+  ]);
+  assert.equal(history.length, 4);
+});
+
+test('Groq history bounds long message content', () => {
+  const [message] = compactGroqHistory([
+    { role: 'user', content: 'a'.repeat(1500) },
+  ]);
+
+  assert.equal(message.content.length, 1000);
+  assert.equal(message.content, 'a'.repeat(1000));
 });
 
 test('provider selection falls back to Gemini, Anthropic, then offline', () => {
