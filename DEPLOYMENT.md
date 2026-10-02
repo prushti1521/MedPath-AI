@@ -18,13 +18,13 @@ This guide walks you through deploying MedPath AI to production using Vercel (Fr
 ```
 ┌─────────────────────────────────────────────────────┐
 │  Frontend (React/Vite)         → Vercel            │
-│  - Auto-deploys from GitHub                         │
+│  - Production deploys from the `main` branch         │
 │  - Environment: VITE_API_BASE                       │
 └─────────────────────────────────────────────────────┘
                         ↓
 ┌─────────────────────────────────────────────────────┐
 │  Backend (Node.js/Express)     → Render            │
-│  - Auto-deploys from GitHub                         │
+│  - Deploy from the Render dashboard after code changes│
 │  - Environment: DATABASE_URL, JWT_SECRET, etc.     │
 └─────────────────────────────────────────────────────┘
                         ↓
@@ -67,14 +67,16 @@ This guide walks you through deploying MedPath AI to production using Vercel (Fr
 6. Add the remaining **Environment Variables**:
    ```
    JWT_SECRET = <strong random secret>
-   GEMINI_API_KEY = <Google AI Studio API key for free-tier Gemini and Search grounding>
+   GROQ_API_KEY = <Groq API key; store as a Render secret>
+   GROQ_MODEL = openai/gpt-oss-20b
+   # Optional alternatives: GEMINI_API_KEY, ANTHROPIC_API_KEY
    NODE_ENV = production
    CORS_ORIGIN = <your Vercel frontend URL>
    ```
 7. **Plan**: Free
 8. Click **Create Web Service**
 9. Wait for deployment (~5-10 minutes)
-10. **Copy the URL** (e.g., `https://medpath-api.onrender.com`)
+10. **Copy the URL** (for the current deployment: `https://medpath-ai-ggzg.onrender.com`)
 
 ---
 
@@ -91,11 +93,11 @@ This guide walks you through deploying MedPath AI to production using Vercel (Fr
    - **Output Directory**: `dist`
 6. Add **Environment Variables**:
    ```
-   VITE_API_BASE = https://medpath-api.onrender.com
+   VITE_API_BASE = https://medpath-ai-ggzg.onrender.com
    ```
 7. Click **Deploy**
 8. Wait for deployment (~3-5 minutes)
-9. **Copy the URL** (e.g., `https://medpath-ai.vercel.app`)
+9. **Copy the URL** (for the current deployment: `https://medpath-ai-frontend-project.vercel.app`)
 
 ---
 
@@ -108,16 +110,18 @@ After deployment, update your backend CORS origin:
 3. Go to **Environment**
 4. Update `CORS_ORIGIN`:
    ```
-   https://medpath-ai.vercel.app,https://your-domain.com
+   https://medpath-ai-frontend-project.vercel.app,https://your-domain.com
    ```
 5. **Deploy** again
+
+The API allows the primary Vercel domain and deployment URLs for this Vercel project. Add any custom frontend domain to `CORS_ORIGIN` in Render before using it for sign-in.
 
 ---
 
 ## ✅ Testing Your Live Application
 
-1. Open your Vercel URL: `https://medpath-ai.vercel.app`
-2. Test login: `testuser@example.com` / `TestPass123!`
+1. Open your Vercel URL: `https://medpath-ai-frontend-project.vercel.app`
+2. Sign in with an existing account or create one from the sign-up screen.
 3. Test all features:
    - ✅ Dashboard
    - ✅ Symptom Check
@@ -133,8 +137,8 @@ After deployment, update your backend CORS origin:
 ## 📍 Your URLs
 
 ```
-🌐 Frontend:  https://medpath-ai.vercel.app
-📡 Backend:   https://medpath-api.onrender.com
+🌐 Frontend:  https://medpath-ai-frontend-project.vercel.app
+📡 Backend:   https://medpath-ai-ggzg.onrender.com
 📊 Database:  Managed by Render (no public URL)
 ```
 

@@ -10,7 +10,7 @@ A comprehensive healthcare management platform that guides patients through symp
 - **Medication Manager**: Drug interaction checking and management
 - **Provider Search**: Location-based healthcare provider discovery
 - **Health Timeline**: Visual tracking of symptoms, temperature, and heart rate trends
-- **AI Health Education**: Explanations of medical conditions and terminology
+- **AI Health Education**: Groq-generated explanations of health topics, with a limited offline fallback
 - **Patient Profile Management**: Comprehensive medical profile with allergies and conditions
 
 ### Authentication & Security
@@ -21,10 +21,10 @@ A comprehensive healthcare management platform that guides patients through symp
 - Account deletion with password verification
 
 ### User Experience
-- Multi-language support (6 languages: English, Spanish, French, Hindi, Gujarati, Chinese)
-- Responsive React UI with modern design system
+- Responsive React UI with phone navigation and account actions
 - Real-time data persistence
 - Role-based access control
+- Accounts are stored in PostgreSQL and can be accessed from multiple devices; each device signs in separately
 
 ## 🛠️ Tech Stack
 
@@ -44,6 +44,9 @@ A comprehensive healthcare management platform that guides patients through symp
 - **Zod** for input validation
 
 ### AI/ML Service
+- **Groq API** for hosted Ask AI responses (default model: `openai/gpt-oss-20b`; free-plan rate limits apply)
+- Optional Gemini and Anthropic provider integrations
+- A limited no-key offline fallback for common health topics
 - **Python 3.8+**
 - **FastAPI** for AI service API
 - **Uvicorn** ASGI server
@@ -90,7 +93,7 @@ cd MedPath-AI
 # Create database
 createdb medpath_ai
 
-# Connection string (update with your password)
+# Connection string (use your local password; never commit real credentials)
 postgresql://postgres:YOUR_PASSWORD@localhost:5432/medpath_ai
 ```
 
@@ -103,14 +106,16 @@ npm install
 
 # Configure environment
 # Create or update .env file with:
-DATABASE_URL=postgresql://postgres:Pari%40%23%241521@localhost:5432/medpath_ai
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/medpath_ai
 JWT_SECRET=your-secret-key-here
+GROQ_API_KEY=your-groq-api-key
+GROQ_MODEL=openai/gpt-oss-20b
 PORT=4000
 NODE_ENV=development
 CORS_ORIGIN=http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177,http://localhost:5178,http://localhost:5179
 
-# Initialize database schema
-npm run db:init  # or manually run schema.sql
+# Initialize/update the database schema
+npm run migrate
 
 # Start backend
 npm start
@@ -275,13 +280,6 @@ MedPath-AI/
 - Soft-delete for data retention compliance
 - Login history tracking for audit trails
 
-## 👤 Test Credentials
-
-```
-Email: testuser@example.com
-Password: TestPass123!
-```
-
 ## 🧪 Testing
 
 All features have been tested and validated:
@@ -292,7 +290,8 @@ All features have been tested and validated:
 - ✅ Medication management with interaction checking
 - ✅ Provider search functionality
 - ✅ Timeline visualization with health trends
-- ✅ Multi-language support
+- ✅ Responsive authentication and mobile navigation
+- ✅ Ask AI with Groq and offline fallback
 - ✅ Account deletion with soft-delete
 
 ## 📊 Dashboard Features Tested
@@ -305,16 +304,6 @@ All features have been tested and validated:
 6. **Risk Alerts** - Health risk notifications
 7. **AI Suggestions** - Personalized health insights
 8. **Recent Reports** - Medical document management
-
-## 🌐 Multi-Language Support
-
-Supported languages:
-- English
-- Español (Spanish)
-- Français (French)
-- हिन्दी (Hindi)
-- ગુજરાતી (Gujarati)
-- 中文 (Chinese)
 
 ## 🚢 Deployment
 
@@ -329,10 +318,14 @@ docker run -p 4000:4000 medpath-api
 ```env
 DATABASE_URL=postgresql://user:password@host:5432/medpath_ai
 JWT_SECRET=your-production-secret
+GROQ_API_KEY=your-groq-api-key
+GROQ_MODEL=openai/gpt-oss-20b
 PORT=4000
 NODE_ENV=production
-CORS_ORIGIN=https://yourdomain.com
+CORS_ORIGIN=https://medpath-ai-frontend-project.vercel.app
 ```
+
+The deployed frontend is `https://medpath-ai-frontend-project.vercel.app` and the API is `https://medpath-ai-ggzg.onrender.com`. Render deployments may need to be triggered manually from its dashboard after a Git push; Vercel deploys the frontend from `main`.
 
 ## 📝 API Documentation
 
