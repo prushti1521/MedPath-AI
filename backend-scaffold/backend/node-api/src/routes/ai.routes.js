@@ -5,16 +5,15 @@ import { query } from "../db/pool.js";
 const router = Router();
 router.use(requireAuth);
 
-const SYSTEM_PROMPT = `You are the "Ask AI" medical information assistant inside a healthcare-navigator app called MedPath AI.
+const SYSTEM_PROMPT = `You are the "Ask AI" health education assistant inside MedPath AI. Give useful, accurate, plain-language information about health topics.
 
-Rules:
-- Explain medical conditions, terms, and medications in clear, plain language a non-expert can follow.
-- Keep answers concise: 4-7 sentences, or a short list for multi-part questions.
-- Cover, when relevant: what it is, common causes, typical symptoms, general treatment approach, and prevention.
-- Never diagnose the person or evaluate their personal symptoms. If they describe their own symptoms, briefly acknowledge them, then redirect: suggest they use the app's Symptom Check feature and/or speak with a healthcare professional, especially for anything urgent.
-- Never give exact personal dosing instructions. You can describe how a class of medication generally works.
-- End every response with a short one-line disclaimer that this is educational information, not medical advice.
-- If the question is unrelated to health or medicine, politely redirect to health topics.`;
+Cover questions about conditions (including asthma), symptoms and common possible causes, tests, prevention, and general treatment approaches. For symptom-to-condition questions, give a short, non-exhaustive list of plausible causes, distinguish common from serious possibilities, and explain that symptoms alone cannot identify a diagnosis. Do not diagnose the user or estimate their personal likelihood of having a condition.
+
+For medication questions, explain common uses and how the medicine or class works, typical side effects, important serious reactions, and relevant interaction cautions when known. Do not give personal dosing instructions or tell anyone to start, stop, or change a medicine; recommend checking with a pharmacist or clinician for personal advice. Be clear when information may vary by person or country.
+
+If the user describes their own symptoms, answer the general health question instead of refusing or only redirecting. Explain possible causes in general terms, note what details a clinician may consider, and recommend the app's Symptom Check or a healthcare professional for personal assessment. For emergency warning signs or severe/worsening symptoms, advise urgent/emergency care.
+
+Use concise paragraphs or bullets (usually 4-8 sentences). Do not claim a list of causes or side effects is exhaustive. End with a short disclaimer that the answer is educational, not a diagnosis or personal medical advice. Politely redirect unrelated questions to health topics.`;
 
 router.post("/chat", async (req, res) => {
   // Support both Groq (free) and Anthropic. Groq is tried first if key present.
@@ -24,6 +23,12 @@ router.post("/chat", async (req, res) => {
   const { messages } = req.body;
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: "messages array is required." });
+  }
+  if (!groqKey && !anthropicKey) {
+    return res.status(503).json({
+      code: "AI_PROVIDER_NOT_CONFIGURED",
+      error: "Ask AI needs an Anthropic or Groq API key configured on the server.",
+    });
   }
 
   // Try Groq first (free tier available)
@@ -107,17 +112,6 @@ router.post("/chat", async (req, res) => {
   const fallbackText = getEducationalFallback(lastMessage?.content || "");
   return saveChatResponse(req.user.id, messages, fallbackText, res);
 });
-
-function getEducationalFallback(question) {
-  const normalized = question.toLowerCase();
-  if (normalized.includes("migraine") || normalized.includes("headache")) {
-    return "A migraine is a neurological condition that can cause moderate to severe, often throbbing head pain, sometimes with nausea or sensitivity to light and sound. Common triggers include stress, poor sleep, dehydration, skipped meals, and hormonal changes. Resting in a quiet, dark room and maintaining regular hydration may help, but seek urgent care for a sudden severe headache, weakness, confusion, fainting, fever with a stiff neck, or vision loss. This is educational information, not medical advice.";
-  }
-  if (normalized.includes("hypertension") || normalized.includes("blood pressure")) {
-    return "Hypertension means blood pressure stays higher than the recommended range over time. It often has no obvious symptoms, which is why regular checks matter. Management commonly includes activity, balanced nutrition, limiting sodium, avoiding tobacco, and medications prescribed by a clinician. Seek urgent care for very high readings with chest pain, breathing trouble, weakness, confusion, or severe headache. This is educational information, not medical advice.";
-  }
-  return "I can provide general educational information about common conditions, symptoms, medications, and prevention. The AI service is temporarily unavailable, so please try a question about a health topic again shortly. For personal symptoms or urgent concerns, use Symptom Check and contact a qualified healthcare professional. This is educational information, not medical advice.";
-}
 
 async function saveChatResponse(userId, messages, text, res) {
   try {

@@ -67,6 +67,7 @@ This guide walks you through deploying MedPath AI to production using Vercel (Fr
 6. Add the remaining **Environment Variables**:
    ```
    JWT_SECRET = <strong random secret>
+   ANTHROPIC_API_KEY = <Anthropic API key>
    NODE_ENV = production
    CORS_ORIGIN = <your Vercel frontend URL>
    ```

@@ -1694,20 +1694,9 @@ function MedicationsPage({ authToken }) {
 /* ---------------------------------------------------------------
    ASK AI — MEDICAL CHAT (real Claude API call)
 ----------------------------------------------------------------*/
-const ASK_AI_SYSTEM_PROMPT = `You are the "Ask AI" medical information assistant inside a healthcare-navigator app called MedPath AI.
-
-Rules:
-- Explain medical conditions, terms, and medications in clear, plain language a non-expert can follow.
-- Keep answers concise: 4-7 sentences, or a short list for multi-part questions.
-- Cover, when relevant: what it is, common causes, typical symptoms, general treatment approach, and prevention.
-- Never diagnose the person or evaluate their personal symptoms. If they describe their own symptoms, briefly acknowledge them, then redirect: suggest they use the app's Symptom Check feature and/or speak with a healthcare professional, especially for anything urgent.
-- Never give exact personal dosing instructions. You can describe how a class of medication generally works.
-- End every response with a short one-line disclaimer that this is educational information, not medical advice.
-- If the question is unrelated to health or medicine, politely redirect to health topics.`;
-
 function AskAI() {
   const [messages, setMessages] = useState([
-    { role: "ai", text: "Ask me about a condition, medication, or medical term — I'll explain it in plain language." },
+    { role: "ai", text: "Ask about conditions like asthma, common symptom causes, or medication uses and side effects. I can explain health topics, but can't diagnose you or recommend personal treatment." },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1743,13 +1732,18 @@ function AskAI() {
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || "Request failed");
+        const requestError = new Error(errData.error || "Request failed");
+        requestError.code = errData.code;
+        throw requestError;
       }
       const data = await response.json();
       setMessages((m) => [...m, { role: "ai", text: data.text || "I wasn't able to generate a response. Please try rephrasing your question." }]);
     } catch (e) {
-      setError("Something went wrong reaching the AI. Please try again.");
-      setMessages((m) => [...m, { role: "ai", text: "Sorry, I couldn't process that just now. Please try again in a moment." }]);
+      const message = e.code === "AI_PROVIDER_NOT_CONFIGURED"
+        ? "Ask AI isn't configured yet. The site administrator needs to add an AI provider key."
+        : "Sorry, I couldn't reach the AI service. Please try again in a moment.";
+      setError(message);
+      setMessages((m) => [...m, { role: "ai", text: message }]);
     } finally {
       setLoading(false);
     }
@@ -1757,7 +1751,7 @@ function AskAI() {
 
   return (
     <div>
-      <SectionTitle eyebrow="Ask AI" title="Understand a condition" sub="Powered by a live Claude API call — educational explanations only, always confirm anything medical with a professional." />
+      <SectionTitle eyebrow="Ask AI" title="Understand a condition" sub="Learn about conditions, symptoms and possible causes, medication uses, and side effects. Educational information only; confirm personal concerns with a healthcare professional." />
       <Card style={{ display: "flex", flexDirection: "column", height: 440, padding: 0, overflow: "hidden" }}>
         <div style={{ flex: 1, overflowY: "auto", padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
           {messages.map((m, i) => (
@@ -1783,7 +1777,7 @@ function AskAI() {
           <div ref={endRef} />
         </div>
         <div style={{ borderTop: `1px solid ${T.line}`, padding: 14, display: "flex", gap: 8 }}>
-          <input style={inputStyle} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="Explain hypertension..." disabled={loading} />
+          <input style={inputStyle} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="Ask about asthma, wheezing, or medication side effects..." disabled={loading} />
           <PrimaryButton icon={Send} onClick={send} disabled={!input.trim() || loading} style={{ padding: "9px 14px" }} />
         </div>
       </Card>
