@@ -1737,7 +1737,11 @@ function AskAI() {
         throw requestError;
       }
       const data = await response.json();
-      setMessages((m) => [...m, { role: "ai", text: data.text || "I wasn't able to generate a response. Please try rephrasing your question." }]);
+      setMessages((m) => [...m, {
+        role: "ai",
+        text: data.text || "I wasn't able to generate a response. Please try rephrasing your question.",
+        sources: Array.isArray(data.sources) ? data.sources : [],
+      }]);
     } catch (e) {
       const message = e.code === "AI_PROVIDER_NOT_CONFIGURED"
         ? "Ask AI isn't configured yet. The site administrator needs to add an AI provider key."
@@ -1751,7 +1755,7 @@ function AskAI() {
 
   return (
     <div>
-      <SectionTitle eyebrow="Ask AI" title="Understand a condition" sub="Learn about conditions, symptoms and possible causes, medication uses, and side effects. Educational information only; confirm personal concerns with a healthcare professional." />
+      <SectionTitle eyebrow="Ask AI" title="Understand a condition" sub="Learn about conditions, symptoms and possible causes, medication uses, and side effects. Avoid identifying details; free-tier Google prompts may be used to improve Google products." />
       <Card style={{ display: "flex", flexDirection: "column", height: 440, padding: 0, overflow: "hidden" }}>
         <div style={{ flex: 1, overflowY: "auto", padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
           {messages.map((m, i) => (
@@ -1764,6 +1768,16 @@ function AskAI() {
                 borderBottomLeftRadius: m.role === "user" ? 12 : 3,
               }}>
                 {m.text}
+                {m.sources?.length > 0 && (
+                  <div style={{ borderTop: `1px solid ${T.line}`, marginTop: 8, paddingTop: 7, display: "grid", gap: 4 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: T.inkSoft }}>Sources</div>
+                    {m.sources.map((source) => (
+                      <a key={source.url} href={source.url} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: T.tealDeep, overflowWrap: "anywhere" }}>
+                        {source.title || source.url}
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -1782,7 +1796,7 @@ function AskAI() {
         </div>
       </Card>
       {error && <p style={{ fontSize: 12, color: T.red, marginTop: 10 }}>{error}</p>}
-      <p style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 12 }}>Responses are generated live and are educational — not a substitute for professional medical advice.</p>
+      <p style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 12 }}>Search citations are informational, not medical verification. Responses are educational and not a substitute for professional medical advice.</p>
     </div>
   );
 }

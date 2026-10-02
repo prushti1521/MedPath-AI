@@ -13,10 +13,10 @@ For medication questions, explain common uses and how the medicine or class work
 
 If the user describes their own symptoms, answer the general health question instead of refusing or only redirecting. Explain possible causes in general terms, note what details a clinician may consider, and recommend the app's Symptom Check or a healthcare professional for personal assessment. For emergency warning signs or severe/worsening symptoms, advise urgent/emergency care.
 
-Use concise paragraphs or bullets (usually 4-8 sentences). Do not claim a list of causes or side effects is exhaustive. End with a short disclaimer that the answer is educational, not a diagnosis or personal medical advice. Politely redirect unrelated questions to health topics.`;
+Use concise paragraphs or bullets (usually 4-8 sentences). Do not claim a list of causes or side effects is exhaustive. End with a short disclaimer that the answer is educational, not a diagnosis or personal medical advice. Politely redirect unrelated questions to health topics. When search results are available, prefer official health agencies and academic medical sources and cite the returned sources.`;
 
 router.post("/chat", async (req, res) => {
-  // Support both Groq (free) and Anthropic. Groq is tried first if key present.
+  const geminiKey = process.env.GEMINI_API_KEY;
   const groqKey = process.env.GROQ_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
@@ -24,14 +24,55 @@ router.post("/chat", async (req, res) => {
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: "messages array is required." });
   }
-  if (!groqKey && !anthropicKey) {
+  if (!geminiKey && !groqKey && !anthropicKey) {
     return res.status(503).json({
       code: "AI_PROVIDER_NOT_CONFIGURED",
-      error: "Ask AI needs an Anthropic or Groq API key configured on the server.",
+      error: "Ask AI needs a Gemini, Groq, or Anthropic API key configured on the server.",
     });
   }
 
-  // Try Groq first (free tier available)
+  if (geminiKey) {
+    try {
+      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": geminiKey,
+        },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents: messages.map((message) => ({
+            role: message.role === "assistant" ? "model" : "user",
+            parts: [{ text: String(message.content ?? "") }],
+          })),
+          tools: [{ google_search: {} }],
+          generationConfig: { maxOutputTokens: 1000 },
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        console.error("Gemini API error:", err?.error?.message || response.status);
+        if (!groqKey && !anthropicKey) {
+          return res.status(response.status).json({ error: err?.error?.message || "Gemini request failed." });
+        }
+      } else {
+        const data = await response.json();
+        const { text, sources } = extractGeminiResponse(data);
+        if (text) return saveChatResponse(req.user.id, messages, text, res, sources);
+        if (!groqKey && !anthropicKey) {
+          return res.status(502).json({ error: "Gemini returned no answer. Please try again." });
+        }
+      }
+    } catch (err) {
+      console.error("Gemini error:", err.message);
+      if (!groqKey && !anthropicKey) {
+        return res.status(502).json({ error: "Could not reach the Gemini service. Please try again." });
+      }
+    }
+  }
+
+  // Try Groq next when its free-tier key is configured.
   if (groqKey) {
     try {
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -108,12 +149,30 @@ router.post("/chat", async (req, res) => {
     }
   }
 
-  const lastMessage = [...messages].reverse().find((message) => message.role === "user");
-  const fallbackText = getEducationalFallback(lastMessage?.content || "");
-  return saveChatResponse(req.user.id, messages, fallbackText, res);
+  return res.status(503).json({ error: "No configured AI provider could answer this request." });
 });
 
-async function saveChatResponse(userId, messages, text, res) {
+export function extractGeminiResponse(data) {
+  const candidate = data.candidates?.[0];
+  const text = (candidate?.content?.parts || [])
+    .map((part) => part.text || "")
+    .join("")
+    .trim();
+  const sources = [];
+  const seenUrls = new Set();
+
+  for (const chunk of candidate?.groundingMetadata?.groundingChunks || []) {
+    const source = chunk.web;
+    if (source?.uri && !seenUrls.has(source.uri)) {
+      seenUrls.add(source.uri);
+      sources.push({ title: source.title || source.uri, url: source.uri });
+    }
+  }
+
+  return { text, sources: sources.slice(0, 5) };
+}
+
+async function saveChatResponse(userId, messages, text, res, sources = []) {
   try {
     const lastUserMessage = [...messages].reverse().find((message) => message.role === "user");
     const conversation = await query(
@@ -131,10 +190,10 @@ async function saveChatResponse(userId, messages, text, res) {
       `INSERT INTO ai_responses (conversation_id, role, content) VALUES ($1, $2, $3)`,
       [conversationId, "assistant", text]
     );
-    return res.json({ text, conversationId });
+    return res.json({ text, conversationId, sources });
   } catch (err) {
     console.error("AI response persistence error:", err);
-    return res.json({ text });
+    return res.json({ text, sources });
   }
 }
 
