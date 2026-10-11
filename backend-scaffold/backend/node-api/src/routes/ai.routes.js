@@ -253,16 +253,51 @@ async function saveChatResponse(userId, messages, text, res, sources = [], extra
   }
 }
 
+const PROVIDER_SEARCH_TAGS = {
+  all: [
+    ["amenity", "hospital|clinic|pharmacy|doctors|doctor|dentist|urgent_care|laboratory|medical_center|medical_centre"],
+    ["healthcare", "hospital|clinic|pharmacy|doctor|dentist|urgent_care|laboratory|medical_centre|health_centre"],
+    ["shop", "chemist|medical_supply"],
+  ],
+  hospital: [["amenity", "hospital"], ["healthcare", "hospital"]],
+  clinic: [["amenity", "clinic"], ["healthcare", "clinic|health_centre"]],
+  pharmacy: [["amenity", "pharmacy"], ["healthcare", "pharmacy"], ["shop", "chemist"]],
+  urgent_care: [["amenity", "urgent_care"], ["healthcare", "urgent_care"]],
+  laboratory: [["amenity", "laboratory"], ["healthcare", "laboratory"]],
+  doctor: [["amenity", "doctors|doctor|dentist"], ["healthcare", "doctor|dentist"]],
+};
+
+export function buildNearbyProvidersQuery({ lat, lon, radius = 5000, type = "all" }) {
+  const latitude = Number(lat);
+  const longitude = Number(lon);
+  const searchRadius = Number(radius);
+  const tags = PROVIDER_SEARCH_TAGS[String(type).toLowerCase()];
+
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    throw new RangeError("Latitude must be between -90 and 90.");
+  }
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    throw new RangeError("Longitude must be between -180 and 180.");
+  }
+  if (!Number.isFinite(searchRadius) || searchRadius < 250 || searchRadius > 50000) {
+    throw new RangeError("Radius must be between 250 and 50000 meters.");
+  }
+  if (!tags) throw new RangeError("Unsupported provider type.");
+
+  const elements = tags.flatMap(([tag, pattern]) => ["node", "way", "relation"].map(
+    (element) => `${element}(around:${searchRadius},${latitude},${longitude})[${tag}~"^(${pattern})$",i];`
+  ));
+  return `[out:json][timeout:15];(${elements.join("")});out center tags;`;
+}
+
 // Overpass API proxy — avoids browser CORS/rate-limit issues
 router.get("/nearby-providers", async (req, res) => {
-  const { lat, lon, radius = 5000, type = "all" } = req.query;
-  if (!lat || !lon) return res.status(400).json({ error: "lat and lon are required." });
-
-  const amenityFilter = type === "all"
-    ? "hospital|clinic|pharmacy|urgent_care|laboratory|doctors|healthcare|medical_center"
-    : type;
-
-  const q = `[out:json][timeout:20];(node(around:${radius},${lat},${lon})[amenity~"${amenityFilter}"];way(around:${radius},${lat},${lon})[amenity~"${amenityFilter}"];relation(around:${radius},${lat},${lon})[amenity~"${amenityFilter}"];);out center tags;`;
+  let overpassQuery;
+  try {
+    overpassQuery = buildNearbyProvidersQuery(req.query);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
 
   const endpoints = [
     "https://overpass-api.de/api/interpreter",
@@ -277,7 +312,7 @@ router.get("/nearby-providers", async (req, res) => {
       const resp = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `data=${encodeURIComponent(q)}`,
+        body: `data=${encodeURIComponent(overpassQuery)}`,
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -289,14 +324,7 @@ router.get("/nearby-providers", async (req, res) => {
     }
   }
 
-  const userLat = Number(lat);
-  const userLon = Number(lon);
-  const fallbackPlaces = [
-    { id: "fallback-hospital", lat: userLat + 0.004, lon: userLon + 0.004, tags: { name: "Community Medical Center", amenity: "hospital", phone: "(555) 555-0100" } },
-    { id: "fallback-clinic", lat: userLat + 0.006, lon: userLon - 0.003, tags: { name: "Neighborhood Urgent Care", amenity: "clinic", phone: "(555) 555-0101" } },
-    { id: "fallback-pharmacy", lat: userLat - 0.003, lon: userLon + 0.005, tags: { name: "Local Pharmacy Plus", amenity: "pharmacy", phone: "(555) 555-0102" } },
-  ];
-  res.json({ elements: fallbackPlaces, fallback: true });
+  res.status(503).json({ error: "Live provider search is temporarily unavailable. Please try again." });
 });
 
 export default router;

@@ -1,6 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildOfflineMedicalAnswer, compactGroqHistory, DEFAULT_GROQ_MODEL, getPrimaryAiProvider } from './ai.routes.js';
+import { buildNearbyProvidersQuery, buildOfflineMedicalAnswer, compactGroqHistory, DEFAULT_GROQ_MODEL, getPrimaryAiProvider } from './ai.routes.js';
+
+test('nearby provider query covers amenity, healthcare, and pharmacy shop tags', () => {
+  const query = buildNearbyProvidersQuery({ lat: "37.77", lon: "-122.42", radius: "5000", type: "all" });
+
+  assert.match(query, /amenity~"\^\(hospital\|clinic\|pharmacy/);
+  assert.match(query, /healthcare~/);
+  assert.match(query, /shop~/);
+  assert.match(query, /around:5000,37\.77,-122\.42/);
+});
+
+test('pharmacy search includes pharmacies and chemist shops', () => {
+  const query = buildNearbyProvidersQuery({ lat: 0, lon: 0, type: "pharmacy" });
+
+  assert.match(query, /pharmacy/);
+  assert.match(query, /chemist/);
+});
+
+test('nearby provider query rejects invalid coordinates and unsupported types', () => {
+  assert.throws(() => buildNearbyProvidersQuery({ lat: 91, lon: 0 }), /Latitude/);
+  assert.throws(() => buildNearbyProvidersQuery({ lat: 0, lon: 181 }), /Longitude/);
+  assert.throws(() => buildNearbyProvidersQuery({ lat: 0, lon: 0, type: "unknown" }), /Unsupported provider type/);
+});
 
 test('offline answer stays supportive and non-diagnostic for symptom questions', () => {
   const answer = buildOfflineMedicalAnswer([

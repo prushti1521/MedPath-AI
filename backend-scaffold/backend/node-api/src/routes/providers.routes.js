@@ -3,6 +3,7 @@ import { query } from "../db/pool.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
+let nextGeocodeRequestAt = 0;
 
 // Public search — no auth required to browse providers
 router.get("/", async (req, res) => {
@@ -38,6 +39,52 @@ router.get("/", async (req, res) => {
   sql += " ORDER BY rating DESC NULLS LAST LIMIT 50";
   const result = await query(sql, params);
   res.json({ providers: result.rows });
+});
+
+router.get("/geocode", async (req, res) => {
+  const searchText = String(req.query.q || "").trim();
+  if (searchText.length < 3 || searchText.length > 200) {
+    return res.status(400).json({ error: "Enter a location between 3 and 200 characters." });
+  }
+
+  const now = Date.now();
+  if (now < nextGeocodeRequestAt) {
+    return res.status(429).json({ error: "Please wait a moment before searching another location." });
+  }
+  nextGeocodeRequestAt = now + 1000;
+
+  try {
+    const url = new URL("https://nominatim.openstreetmap.org/search");
+    url.searchParams.set("q", searchText);
+    url.searchParams.set("format", "jsonv2");
+    url.searchParams.set("limit", "5");
+    url.searchParams.set("addressdetails", "1");
+
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        "Accept-Language": "en",
+        "User-Agent": "MedPathAI/1.0 (https://medpath-ai-frontend-project.vercel.app)",
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) {
+      return res.status(502).json({ error: "Location search is temporarily unavailable. Please try again." });
+    }
+
+    const results = await response.json();
+    res.set("Cache-Control", "private, max-age=300");
+    res.json({
+      locations: results.map((result) => ({
+        displayName: result.display_name,
+        lat: Number(result.lat),
+        lon: Number(result.lon),
+        type: result.type,
+      })),
+    });
+  } catch {
+    res.status(502).json({ error: "Location search is temporarily unavailable. Please try again." });
+  }
 });
 
 router.use(requireAuth);

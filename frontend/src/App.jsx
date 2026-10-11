@@ -1276,15 +1276,6 @@ function AppointmentPrep({ authToken }) {
 /* ---------------------------------------------------------------
   DOCTOR FINDER
 ----------------------------------------------------------------*/
-// Demo fallback data for healthcare locations (when APIs fail)
-const DEMO_HEALTHCARE_LOCATIONS = [
-  { id: 'demo-1', name: 'St. Mary Medical Center', type: 'hospital', lat: 37.7749, lon: -122.4194, distance: 0.5 * 1609, phone: '(415) 555-0100', website: 'stmarymedical.com' },
-  { id: 'demo-2', name: 'Urgent Care Clinic', type: 'clinic', lat: 37.7759, lon: -122.4164, distance: 0.8 * 1609, phone: '(415) 555-0101', website: 'urgentclinic.com' },
-  { id: 'demo-3', name: 'Downtown Pharmacy Plus', type: 'pharmacy', lat: 37.7799, lon: -122.4094, distance: 1.2 * 1609, phone: '(415) 555-0102', website: 'pharmacyplus.com' },
-  { id: 'demo-4', name: 'City Diagnostic Lab', type: 'laboratory', lat: 37.7729, lon: -122.4224, distance: 1.5 * 1609, phone: '(415) 555-0103', website: 'citylab.com' },
-  { id: 'demo-5', name: 'Dr. Johnson Family Medicine', type: 'doctor', lat: 37.7869, lon: -122.4064, distance: 1.8 * 1609, phone: '(415) 555-0104', website: 'drjohnson.com' },
-];
-
 // Helper: distance in meters between two lat/lon
 function haversine(lat1, lon1, lat2, lon2) {
   const toRad = (v) => (v * Math.PI) / 180;
@@ -1296,12 +1287,27 @@ function haversine(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+function healthcareTypeFromTags(tags = {}) {
+  const amenity = String(tags.amenity || "").toLowerCase();
+  const healthcare = String(tags.healthcare || "").toLowerCase();
+  const shop = String(tags.shop || "").toLowerCase();
+
+  if (amenity === "hospital" || healthcare === "hospital" || healthcare === "medical_centre") return "hospital";
+  if (amenity === "pharmacy" || healthcare === "pharmacy" || shop === "chemist") return "pharmacy";
+  if (amenity === "urgent_care" || healthcare === "urgent_care") return "urgent_care";
+  if (amenity === "laboratory" || healthcare === "laboratory") return "laboratory";
+  if (["doctors", "doctor", "dentist"].includes(amenity) || ["doctor", "dentist"].includes(healthcare)) return "doctor";
+  if (["clinic", "health_centre"].includes(amenity) || ["clinic", "health_centre"].includes(healthcare)) return "clinic";
+  return "healthcare";
+}
+
 function DoctorFinder() {
   const [query, setQuery] = useState("");
+  const [locationQuery, setLocationQuery] = useState("");
+  const [locationLabel, setLocationLabel] = useState("");
   const [typeFilter, setTypeFilter] = useState("All");
   const [radius, setRadius] = useState(5000); // meters
   const [loc, setLoc] = useState(null);
-  const [watchId, setWatchId] = useState(null);
   const [places, setPlaces] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1319,86 +1325,92 @@ function DoctorFinder() {
     }
   }, [googleKey, useGoogle]);
 
-  useEffect(() => {
-    return () => {
-      if (watchId && navigator.geolocation) navigator.geolocation.clearWatch(watchId);
-    };
-  }, [watchId]);
-
-  async function fetchNearby(lat, lon, rad) {
+  async function fetchNearby(latitude, longitude, searchRadius, requestedType = typeFilter) {
     setLoading(true);
     setError("");
     try {
       if (useGoogle && googleKey) {
-        return await fetchNearbyGoogle(lat, lon, rad);
+        return await fetchNearbyGoogle(latitude, longitude, searchRadius);
       }
 
       // Use backend proxy to avoid browser CORS/rate-limit issues with Overpass
       const token = localStorage.getItem("AUTH_TOKEN") || "";
-      const params = new URLSearchParams({ lat, lon, radius: rad, type: typeFilter || "all" });
-      let overpassSuccess = false;
+      const params = new URLSearchParams({
+        lat: latitude,
+        lon: longitude,
+        radius: searchRadius,
+        type: requestedType === "All" ? "all" : requestedType,
+      });
+      const proxyResp = await fetch(`${API_BASE}/ai/nearby-providers?${params}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await proxyResp.json().catch(() => ({}));
+      if (!proxyResp.ok) throw new Error(data.error || "Live provider search is temporarily unavailable. Please try again.");
 
-      try {
-        const proxyResp = await fetch(`${API_BASE}/ai/nearby-providers?${params}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (proxyResp.ok) {
-          const data = await proxyResp.json();
-          const els = (data.elements || []).map((el) => {
-            const latp = el.lat || (el.center && el.center.lat);
-            const lonp = el.lon || (el.center && el.center.lon);
-            const tags = el.tags || {};
-            const distance = latp ? haversine(lat, lon, latp, lonp) : null;
-            return {
-              id: el.id,
-              name: tags.name || tags["operator"] || "(unnamed)",
-              type: (tags.amenity || tags.shop || tags.healthcare || "").toLowerCase(),
-              lat: latp,
-              lon: lonp,
-              phone: tags.phone || tags["contact:phone"] || null,
-              website: tags.website || tags.url || null,
-              opening_hours: tags.opening_hours || null,
-              distance,
-              tags,
-            };
-          }).filter((p) => p.lat && p.lon);
+      const providers = (data.elements || []).map((element) => {
+        const latitudeForPlace = Number(element.lat ?? element.center?.lat);
+        const longitudeForPlace = Number(element.lon ?? element.center?.lon);
+        const tags = element.tags || {};
+        return {
+          id: `${element.type || "place"}-${element.id}`,
+          name: tags.name || tags.operator || "Unnamed healthcare provider",
+          type: healthcareTypeFromTags(tags),
+          lat: latitudeForPlace,
+          lon: longitudeForPlace,
+          phone: tags.phone || tags["contact:phone"] || null,
+          website: tags.website || tags.url || null,
+          opening_hours: tags.opening_hours || null,
+          distance: haversine(latitude, longitude, latitudeForPlace, longitudeForPlace),
+          tags,
+        };
+      }).filter((place) => Number.isFinite(place.lat) && Number.isFinite(place.lon));
 
-          const dedup = [];
-          const seen = new Set();
-          for (const p of els) {
-            const key = `${p.name}|${p.type}|${Math.round(p.lat * 10000)}|${Math.round(p.lon * 10000)}`;
-            if (!seen.has(key)) { seen.add(key); dedup.push(p); }
-          }
-          dedup.sort((a, b) => (a.distance || 0) - (b.distance || 0));
-
-          if (dedup.length > 0) {
-            setPlaces(dedup);
-            setLoading(false);
-            overpassSuccess = true;
-            return;
-          }
-        }
-      } catch (proxyErr) {
-        // Backend proxy failed, fall through to demo data
+      const deduplicated = [];
+      const seen = new Set();
+      for (const place of providers) {
+        const key = `${place.name}|${place.type}|${Math.round(place.lat * 10000)}|${Math.round(place.lon * 10000)}`;
+        if (!seen.has(key)) { seen.add(key); deduplicated.push(place); }
       }
-
-      // Proxy unavailable — show demo data with a helpful message
-      if (!overpassSuccess) {
-        if (googleKey) {
-          try {
-            await fetchNearbyGoogle(lat, lon, rad);
-            return;
-          } catch (gerr) {
-            // Google also failed
-          }
-        }
-        setError("Real provider data temporarily unavailable. Showing demo results. Add a Google Places API key for live data.");
-        const demoResults = DEMO_HEALTHCARE_LOCATIONS
-          .map((p) => ({ ...p, distance: haversine(lat, lon, p.lat, p.lon) }))
-          .sort((a, b) => a.distance - b.distance);
-        setPlaces(demoResults);
-      }
+      deduplicated.sort((first, second) => first.distance - second.distance);
+      setPlaces(deduplicated);
+    } catch (fetchError) {
+      setPlaces([]);
+      setError(fetchError.message || "Live provider search is temporarily unavailable. Please try again.");
     } finally {
+      setLoading(false);
+    }
+  }
+
+  async function searchByLocation(event) {
+    event.preventDefault();
+    const searchText = locationQuery.trim();
+    if (searchText.length < 3) {
+      setError("Enter a city, address, or postal code to search.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setPlaces([]);
+    try {
+      const response = await fetch(`${API_BASE}/providers/geocode?q=${encodeURIComponent(searchText)}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Location search is temporarily unavailable.");
+      const location = data.locations?.[0];
+      if (!location) throw new Error("No matching location found. Try adding a city or country.");
+
+      const latitude = Number(location.lat);
+      const longitude = Number(location.lon);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        throw new Error("That location could not be mapped. Try a more specific search.");
+      }
+
+      setLoc({ lat: latitude, lon: longitude, accuracy: null });
+      setLocationLabel(location.displayName);
+      await fetchNearby(latitude, longitude, radius);
+    } catch (searchError) {
+      setPlaces([]);
+      setError(searchError.message || "Location search is temporarily unavailable.");
       setLoading(false);
     }
   }
@@ -1461,75 +1473,68 @@ function DoctorFinder() {
     }
   }
 
-  function startWatch() {
-    if (!navigator.geolocation) { 
-      setError("Geolocation not supported by this browser."); 
+  function useCurrentLocation() {
+    if (!navigator.geolocation) {
+      setError("Location access is not supported by this browser.");
       return; 
     }
     setError("");
     setPlaces([]);
     setLoading(true);
-    
+
     navigator.geolocation.getCurrentPosition(
-      (p) => {
-        const { latitude: lat, longitude: lon, accuracy } = p.coords;
-        setLoc({ lat, lon, accuracy });
-        setError(""); // Clear any previous errors
-        fetchNearby(lat, lon, radius);
-      }, 
-      (err) => {
-        setError(`Geolocation error: ${err.message}. You can still use demo results or enter an address manually.`);
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        setLoc({ lat: latitude, lon: longitude, accuracy });
+        setLocationLabel("Current location");
+        fetchNearby(latitude, longitude, radius);
+      },
+      (geolocationError) => {
+        setError(`Could not get your location: ${geolocationError.message}. Search by address instead.`);
         setLoading(false);
-      }, 
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 8000 }
+      },
+      { enableHighAccuracy: true, maximumAge: 60000, timeout: 12000 }
     );
-
-    const id = navigator.geolocation.watchPosition(
-      (p) => {
-        const { latitude: lat, longitude: lon, accuracy } = p.coords;
-        setLoc({ lat, lon, accuracy });
-        // Only refetch if distance has changed significantly
-        fetchNearby(lat, lon, radius);
-      }, 
-      (err) => {
-        // Don't overwrite error on watch failure if we already have location
-        if (!loc) {
-          setError(`Location watch error: ${err.message}`);
-        }
-      }, 
-      { enableHighAccuracy: true, maximumAge: 3000, timeout: 8000 }
-    );
-
-    setWatchId(id);
-  }
-
-  function stopWatch() {
-    if (watchId && navigator.geolocation) navigator.geolocation.clearWatch(watchId);
-    setWatchId(null);
   }
 
   const filtered = places.filter((p) => {
-    if (typeFilter !== "All" && p.type && !p.type.includes(typeFilter)) return false;
+    if (typeFilter !== "All" && p.type !== typeFilter) return false;
     if (query && !p.name.toLowerCase().includes(query.toLowerCase())) return false;
     return true;
   });
 
   return (
     <div>
-      <SectionTitle eyebrow="Doctor finder" title="Find the right provider near you" sub="Allow location access to search nearby hospitals, clinics, pharmacies, and urgent care in real time." />
+      <SectionTitle eyebrow="Doctor finder" title="Find nearby care" sub="Search hospitals, clinics, pharmacies, urgent care, labs, and doctors by place or current location." />
 
       <Card style={{ marginBottom: 12 }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <form onSubmit={searchByLocation} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 220 }}>
-            <input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="Search by name or specialty" style={{ ...inputStyle, width: '100%' }} />
+            <input aria-label="City, address, or postal code" value={locationQuery} onChange={(event) => setLocationQuery(event.target.value)} placeholder="City, address, or postal code" style={{ ...inputStyle, width: '100%' }} />
           </div>
-          <select value={typeFilter} onChange={(e)=>setTypeFilter(e.target.value)} style={{ ...inputStyle, width: 160 }}>
-            {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          <PrimaryButton icon={Search} disabled={loading || locationQuery.trim().length < 3}>Search location</PrimaryButton>
+          <PrimaryButton icon={MapPin} disabled={loading} onClick={useCurrentLocation}>Use my location</PrimaryButton>
+        </form>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+          <input aria-label="Search providers by name" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter by provider name" style={{ ...inputStyle, flex: "1 1 220px" }} />
+          <select aria-label="Provider type" value={typeFilter} onChange={(event) => {
+            const nextType = event.target.value;
+            setTypeFilter(nextType);
+            if (loc) fetchNearby(loc.lat, loc.lon, radius, nextType);
+          }} style={{ ...inputStyle, width: 160 }}>
+            {TYPES.map((type) => <option key={type} value={type}>{type === "All" ? "All care types" : type.replaceAll("_", " ")}</option>)}
           </select>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <PrimaryButton icon={MapPin} onClick={startWatch}>Use my location</PrimaryButton>
-            {watchId ? <GhostButton onClick={stopWatch}>Stop</GhostButton> : null}
-          </div>
+          <select aria-label="Search radius" value={radius} onChange={(event) => {
+            const nextRadius = Number(event.target.value);
+            setRadius(nextRadius);
+            if (loc) fetchNearby(loc.lat, loc.lon, nextRadius);
+          }} style={{ ...inputStyle, width: 150 }}>
+            <option value={1000}>Within 1 km</option>
+            <option value={2500}>Within 2.5 km</option>
+            <option value={5000}>Within 5 km</option>
+            <option value={10000}>Within 10 km</option>
+            <option value={25000}>Within 25 km</option>
+          </select>
         </div>
         <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
@@ -1568,11 +1573,11 @@ function DoctorFinder() {
         <div style={{ marginTop: 10, color: T.inkSoft }}>
           {loc ? (
             <div>
-              <div style={{ fontWeight: 500, color: T.ink }}>📍 Location: {loc.lat.toFixed(4)}°N, {loc.lon.toFixed(4)}°W</div>
-              <div style={{ fontSize: 12, marginTop: 4 }}>Accuracy: ±{Math.round(loc.accuracy)}m | Radius: {(radius/1609).toFixed(1)} mi</div>
+              <div style={{ fontWeight: 500, color: T.ink }}>Location: {locationLabel || `${Math.abs(loc.lat).toFixed(4)}° ${loc.lat >= 0 ? "N" : "S"}, ${Math.abs(loc.lon).toFixed(4)}° ${loc.lon >= 0 ? "E" : "W"}`}</div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>{Number.isFinite(loc.accuracy) ? `GPS accuracy ±${Math.round(loc.accuracy)} m · ` : ""}Radius: {(radius / 1000).toFixed(radius % 1000 ? 1 : 0)} km</div>
             </div>
           ) : (
-            <div style={{ color: T.amber }}>📍 Click "Use my location" to find nearby healthcare providers</div>
+            <div style={{ color: T.inkSoft }}>Search a place or use your current location.</div>
           )}
           {error && <div style={{ color: T.red, marginTop: 8, fontSize: 13, display: 'flex', alignItems: 'flex-start', gap: 6 }}><span>⚠️</span> <span>{error}</span></div>}
         </div>
@@ -1580,16 +1585,8 @@ function DoctorFinder() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {loading && <Card>🔍 Searching nearby places…</Card>}
-        {!loading && filtered.length === 0 && loc && <Card>No nearby results found. Try adjusting the search radius or type filter.</Card>}
-        {!loading && filtered.length === 0 && !loc && <Card>Enable location access to see nearby healthcare providers.</Card>}
-        {places.length > 0 && places.some(p => typeof p.id === 'string' && p.id.startsWith('demo-')) && (
-          <Card style={{ background: `${T.amber}10`, border: `1px solid ${T.amber}30`, borderRadius: 10 }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: T.amber, fontSize: 13 }}>
-              <span>ℹ️</span>
-              <span><strong>Demo Results:</strong> Real location data unavailable. Replace with actual providers by enabling Google Places with an API key.</span>
-            </div>
-          </Card>
-        )}
+        {!loading && !error && filtered.length === 0 && loc && <Card>No mapped providers found in this area. Try a larger radius or another location.</Card>}
+        {!loading && !error && filtered.length === 0 && !loc && <Card>Search for a place or use your current location to see nearby care.</Card>}
         {filtered.map((p) => (
           <Card key={p.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -1613,15 +1610,7 @@ function DoctorFinder() {
           </Card>
         ))}
       </div>
-      <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 16, padding: 12, background: T.paper, borderRadius: 8 }}>
-        <div style={{ fontWeight: 600, marginBottom: 6 }}>💡 Tips:</div>
-        <ul style={{ margin: 0, paddingLeft: 20 }}>
-          <li>Enable <strong>Google Places</strong> with an API key for accurate, real-time results</li>
-          <li>Try different healthcare type filters (hospital, clinic, pharmacy, etc.)</li>
-          <li>Allow browser location access for the most accurate provider matches</li>
-          <li>Click <strong>Directions</strong> to open navigation in Google Maps</li>
-        </ul>
-      </div>
+      <p style={{ fontSize: 12, color: T.inkSoft, marginTop: 16 }}>Listings are from OpenStreetMap and may be incomplete. Contact a facility to confirm services and hours.</p>
     </div>
   );
 }
