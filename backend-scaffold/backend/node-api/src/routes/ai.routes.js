@@ -5,6 +5,7 @@ import { query } from "../db/pool.js";
 const router = Router();
 router.use(requireAuth);
 export const DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b";
+export const FALLBACK_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const GROQ_HISTORY_MESSAGES = 4;
 const GROQ_MESSAGE_CHAR_LIMIT = 1000;
 const GROQ_MAX_OUTPUT_TOKENS = 500;
@@ -97,46 +98,47 @@ router.post("/chat", async (req, res) => {
   }
 
   if (geminiKey && primaryProvider === "gemini") {
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": geminiKey,
-        },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-          contents: messages.map((message) => ({
-            role: message.role === "assistant" ? "model" : "user",
-            parts: [{ text: String(message.content ?? "") }],
-          })),
-          tools: [{ google_search: {} }],
-          generationConfig: { maxOutputTokens: 1000 },
-        }),
-      });
+    const geminiModels = [...new Set([geminiModel, FALLBACK_GEMINI_MODEL])];
+    for (const model of geminiModels) {
+      let response;
+      try {
+        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": geminiKey,
+          },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents: messages.map((message) => ({
+              role: message.role === "assistant" ? "model" : "user",
+              parts: [{ text: String(message.content ?? "") }],
+            })),
+            tools: [{ google_search: {} }],
+            generationConfig: { maxOutputTokens: 1000 },
+          }),
+        });
+      } catch (err) {
+        console.error(`Gemini ${model} request failed:`, err.message);
+        break;
+      }
 
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        console.error("Gemini API error:", err?.error?.message || response.status);
-        if (!groqKey && !anthropicKey) {
-          const text = buildOfflineMedicalAnswer(messages);
-          return saveChatResponse(req.user.id, messages, text, res, [], { provider: "offline", mode: "offline_fallback" });
-        }
-      } else {
+      if (response.ok) {
         const data = await response.json();
         const { text, sources } = extractGeminiResponse(data);
         if (text) return saveChatResponse(req.user.id, messages, text, res, sources, { provider: "gemini" });
-        if (!groqKey && !anthropicKey) {
-          const fallbackText = buildOfflineMedicalAnswer(messages);
-          return saveChatResponse(req.user.id, messages, fallbackText, res, [], { provider: "offline", mode: "offline_fallback" });
-        }
+      } else {
+        const err = await response.json().catch(() => ({}));
+        console.error(`Gemini ${model} API error:`, err?.error?.message || response.status);
+        const retryable = response.status === 429 || response.status >= 500;
+        if (!retryable || model === geminiModels[geminiModels.length - 1]) break;
+        console.warn(`Retrying Gemini request with ${FALLBACK_GEMINI_MODEL}.`);
       }
-    } catch (err) {
-      console.error("Gemini error:", err.message);
-      if (!groqKey && !anthropicKey) {
-        const fallbackText = buildOfflineMedicalAnswer(messages);
-        return saveChatResponse(req.user.id, messages, fallbackText, res, [], { provider: "offline", mode: "offline_fallback" });
-      }
+    }
+
+    if (!groqKey && !anthropicKey) {
+      const fallbackText = buildOfflineMedicalAnswer(messages);
+      return saveChatResponse(req.user.id, messages, fallbackText, res, [], { provider: "offline", mode: "offline_fallback" });
     }
   }
 
