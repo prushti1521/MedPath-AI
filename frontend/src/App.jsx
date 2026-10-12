@@ -1396,7 +1396,10 @@ function DoctorFinder() {
     setError("");
     setPlaces([]);
     try {
-      const response = await fetch(`${API_BASE}/providers/geocode?q=${encodeURIComponent(searchText)}`);
+      const geocodeUrl = import.meta.env.DEV
+        ? `${API_BASE}/providers/geocode?q=${encodeURIComponent(searchText)}`
+        : `/api/geocode?q=${encodeURIComponent(searchText)}`;
+      const response = await fetch(geocodeUrl);
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Location search is temporarily unavailable.");
       const location = data.locations?.[0];
