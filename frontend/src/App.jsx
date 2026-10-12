@@ -578,6 +578,7 @@ function HomePage({ go, profile, dashboard, loadingDashboard, authToken }) {
           value={dashboard?.recentReports?.map((r) => r.report_type).join(" · ") || "No reports uploaded yet."}
           icon={FileText}
           accent={T.clay}
+          onClick={() => go("reports")}
         />
       </div>
 
@@ -591,6 +592,7 @@ function HomePage({ go, profile, dashboard, loadingDashboard, authToken }) {
             <GhostButton icon={Plus} onClick={() => go("symptom")}>Log symptom</GhostButton>
             <GhostButton icon={CalendarCheck} onClick={() => go("appointments")}>Add appointment</GhostButton>
             <GhostButton icon={PillIcon} onClick={() => go("meds")}>Add medication</GhostButton>
+            <GhostButton icon={FileText} onClick={() => go("reports")}>Upload report</GhostButton>
             <GhostButton icon={FileText} onClick={() => go("profile")}>Update profile</GhostButton>
           </div>
         </div>
@@ -1947,6 +1949,218 @@ function AskAI() {
   );
 }
 
+function ReportsPage({ authToken, onReportsChanged }) {
+  const [reports, setReports] = useState([]);
+  const [reportType, setReportType] = useState("lab");
+  const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [deletingReportId, setDeletingReportId] = useState(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadReports() {
+      setLoading(true);
+      setError("");
+      try {
+        const response = await fetch(`${API_BASE}/reports`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Unable to load reports.");
+        if (active) setReports(Array.isArray(data.reports) ? data.reports : []);
+      } catch (err) {
+        if (active) setError(err.message || "Unable to load reports.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    if (authToken) loadReports();
+    return () => { active = false; };
+  }, [authToken]);
+
+  async function uploadReport() {
+    setError("");
+    setNotice("");
+    if (!file) {
+      setError("Choose a report image or PDF first.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError("The file must be 10 MB or smaller.");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("reportType", reportType);
+      const response = await fetch(`${API_BASE}/reports/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authToken}` },
+        body: formData,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to upload this report.");
+
+      const report = data.report;
+      if (report) setReports((current) => [report, ...current.filter((item) => item.id !== report.id)].slice(0, 20));
+      setNotice(report?.extracted_summary
+        ? "Report uploaded and summary generated."
+        : "Report uploaded. An automated summary is not available for this file.");
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      await onReportsChanged?.();
+    } catch (err) {
+      setError(err.message || "Unable to upload this report.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function deleteReport(report) {
+    if (!window.confirm("Delete this report and its extracted information? This cannot be undone.")) return;
+    setError("");
+    setNotice("");
+    setDeletingReportId(report.id);
+    try {
+      const response = await fetch(`${API_BASE}/reports/${report.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Unable to delete this report.");
+      }
+      setReports((current) => current.filter((item) => item.id !== report.id));
+      setNotice("Report deleted.");
+      await onReportsChanged?.();
+    } catch (err) {
+      setError(err.message || "Unable to delete this report.");
+    } finally {
+      setDeletingReportId(null);
+    }
+  }
+
+  function getSummarySections(value) {
+    if (!value) return [];
+    let summary = value;
+    if (typeof summary === "string") {
+      try { summary = JSON.parse(summary); } catch { return []; }
+    }
+    if (!summary || typeof summary !== "object") return [];
+    return [
+      ["Key findings", summary.key_findings],
+      ["Diagnoses", summary.diagnoses],
+      ["Medications", summary.medications],
+      ["Abnormal values", summary.abnormal_values],
+      ["Warnings", summary.warnings],
+      ["Questions for your clinician", summary.follow_up_questions],
+    ].filter(([, items]) => Array.isArray(items) && items.length > 0);
+  }
+
+  function formatSummaryItem(item) {
+    if (typeof item === "string") return item;
+    if (!item || typeof item !== "object") return String(item ?? "");
+    return Object.entries(item)
+      .map(([key, value]) => `${key.replaceAll("_", " ")}: ${Array.isArray(value) ? value.join(", ") : value}`)
+      .join(" · ");
+  }
+
+  return (
+    <div>
+      <SectionTitle eyebrow="Reports" title="Medical reports" sub="Keep uploaded reports and any available extracted notes together." />
+      <p style={{ color: T.inkSoft, fontSize: 13, lineHeight: 1.5, margin: "-6px 0 16px" }}>
+        Gemini processes uploaded files to extract report information. Redact personal identifiers first, and review results with your clinician.
+      </p>
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(180px, 240px) auto", alignItems: "end", gap: 12 }} className="report-upload-row">
+          <label className="auth-field">
+            <span>Report image or PDF</span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf,.pdf,image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+              onChange={(event) => setFile(event.target.files?.[0] || null)}
+              style={{ width: "100%", minHeight: 42, padding: 8, border: `1px solid ${T.line}`, borderRadius: 8, background: "#fff" }}
+            />
+          </label>
+          <label className="auth-field">
+            <span>Report type</span>
+            <select value={reportType} onChange={(event) => setReportType(event.target.value)} style={inputStyle}>
+              <option value="lab">Lab results</option>
+              <option value="imaging">Imaging</option>
+              <option value="discharge_summary">Discharge summary</option>
+              <option value="prescription">Prescription</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <PrimaryButton icon={Upload} onClick={uploadReport} disabled={uploading || !file} style={{ justifyContent: "center", minHeight: 42 }}>
+            {uploading ? "Uploading…" : "Upload report"}
+          </PrimaryButton>
+        </div>
+        {file && <div style={{ color: T.inkSoft, fontSize: 12.5, marginTop: 10 }}>{file.name}</div>}
+      </Card>
+
+      {error && <div role="alert" style={{ color: T.red, fontSize: 13, marginBottom: 14 }}>{error}</div>}
+      {notice && <div role="status" style={{ color: T.sage, fontSize: 13, marginBottom: 14 }}>{notice}</div>}
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+        <h2 style={{ margin: 0, color: T.ink, fontSize: 18 }}>Recent uploads</h2>
+        <span style={{ color: T.inkSoft, fontSize: 12.5 }}>{reports.length} of 20</span>
+      </div>
+      {loading && <p style={{ color: T.inkSoft }}>Loading reports…</p>}
+      {!loading && !error && reports.length === 0 && (
+        <Card><div style={{ color: T.inkSoft }}>No reports uploaded yet.</div></Card>
+      )}
+      <div style={{ display: "grid", gap: 12 }}>
+        {reports.map((report) => {
+          const summarySections = getSummarySections(report.extracted_summary);
+          return (
+            <Card key={report.id} style={{ padding: "16px 18px" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+                <strong style={{ color: T.ink, textTransform: "capitalize" }}>{String(report.report_type || "Report").replaceAll("_", " ")}</strong>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <time style={{ color: T.inkSoft, fontSize: 12 }}>{report.uploaded_at ? new Date(report.uploaded_at).toLocaleDateString() : "Recently uploaded"}</time>
+                  <button
+                    type="button"
+                    aria-label={`Delete ${String(report.report_type || "report").replaceAll("_", " ")}`}
+                    title="Delete report"
+                    onClick={() => deleteReport(report)}
+                    disabled={deletingReportId === report.id}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "none", background: "transparent", color: T.red, font: "inherit", cursor: deletingReportId === report.id ? "wait" : "pointer" }}
+                  >
+                    <Trash2 size={15} aria-hidden="true" />Delete
+                  </button>
+                </div>
+              </div>
+              {summarySections.length > 0 ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {summarySections.map(([label, items]) => (
+                    <div key={label}>
+                      <div style={{ color: T.inkSoft, fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{label}</div>
+                      <ul style={{ margin: 0, paddingLeft: 20, color: T.ink, fontSize: 13.5, lineHeight: 1.55 }}>
+                        {items.map((item, index) => <li key={`${label}-${index}`}>{formatSummaryItem(item)}</li>)}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: T.inkSoft, fontSize: 13, lineHeight: 1.5 }}>The upload is saved, but no automated summary was returned for this file.</div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------------------------------------------------
    APP SHELL
 ----------------------------------------------------------------*/
@@ -1958,6 +2172,7 @@ const NAV = [
   { key: "doctors", label: "Find a doctor", icon: MapPin },
   { key: "meds", label: "Medications", icon: PillIcon },
   { key: "ask", label: "Ask AI", icon: MessageCircleQuestion },
+  { key: "reports", label: "Reports", icon: FileText },
   { key: "profile", label: "Profile", icon: UserCircle },
 ];
 const MOBILE_NAV_KEYS = ["home", "symptom", "timeline", "appointments", "profile"];
@@ -2196,6 +2411,7 @@ export default function App() {
     doctors: <DoctorFinder />,
     meds: <MedicationsPage authToken={authToken} />,
     ask: <AskAI />,
+    reports: <ReportsPage authToken={authToken} onReportsChanged={loadDashboard} />,
   };
 
   return (

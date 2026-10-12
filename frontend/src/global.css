@@ -236,6 +236,11 @@ table {
 		grid-template-columns: minmax(0, 1fr) !important;
 	}
 
+	.report-upload-row {
+		grid-template-columns: minmax(0, 1fr) !important;
+		align-items: stretch !important;
+	}
+
 	.mobile-tabbar button {
 		min-width: 0;
 		flex: 1;
