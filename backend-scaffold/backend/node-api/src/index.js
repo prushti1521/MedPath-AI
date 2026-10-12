@@ -45,12 +45,22 @@ async function initDb() {
     } else {
       console.log("Database schema already in place.");
     }
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS login_history (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        login_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        logout_at TIMESTAMPTZ,
+        ip_address TEXT,
+        user_agent TEXT,
+        success BOOLEAN NOT NULL DEFAULT true
+      )
+    `);
   } catch (err) {
-    console.error("DB init error (non-fatal):", err.message);
+    console.error("DB initialization failed:", err.message);
+    throw err;
   }
 }
-
-initDb();
 
 const app = express();
 
@@ -121,4 +131,5 @@ app.use((err, req, res, next) => {
 });
 
 const port = process.env.PORT || 4000;
+await initDb();
 app.listen(port, () => console.log(`API listening on port ${port}`));
