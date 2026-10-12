@@ -52,12 +52,23 @@ test('offline answer explains asthma rather than returning generic symptom cause
   assert.doesNotMatch(answer, /common causes can include stress, infections/i);
 });
 
+test('offline answer gives question-specific information for fever questions', () => {
+  const answer = buildOfflineMedicalAnswer([
+    { role: 'user', content: 'What is a fever and what commonly causes one?' },
+  ]);
+
+  assert.match(answer, /temporary rise in body temperature/i);
+  assert.match(answer, /common causes include viral infections/i);
+  assert.doesNotMatch(answer, /can't generate a tailored answer/i);
+});
+
 test('offline answer is transparent when no supported topic matches', () => {
   const answer = buildOfflineMedicalAnswer([
     { role: 'user', content: 'Can you explain a rare endocrine disorder?' },
   ]);
 
-  assert.match(answer, /can't generate a tailored answer/i);
+  assert.match(answer, /you asked:.*rare endocrine disorder/i);
+  assert.match(answer, /offline mode/i);
   assert.match(answer, /healthcare professional/i);
 });
 

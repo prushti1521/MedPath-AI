@@ -42,7 +42,24 @@ export function buildOfflineMedicalAnswer(messages) {
     return "Headaches can have many causes, including tension, migraine, illness, dehydration, sleep disruption, or medication effects; symptoms alone cannot identify the cause. A clinician may consider when it began, its pattern and severity, associated symptoms, and medicines you take. Seek emergency care for a sudden severe headache, or one with weakness, confusion, fainting, vision loss, fever with a stiff neck, or after a head injury. If headaches are new, frequent, worsening, or not improving, contact a healthcare professional. This is educational information, not a diagnosis or personal medical advice.";
   }
 
-  return "I can't generate a tailored answer right now because the AI provider is unavailable. For personal symptoms, use the app's Symptom Check or contact a healthcare professional; seek urgent care for severe or rapidly worsening symptoms. This is educational guidance only, not a diagnosis or personal medical advice.";
+  if (/\b(fever|high temperature|temperature)\b/.test(lower)) {
+    return "A fever is a temporary rise in body temperature and is often part of the immune response. Common causes include viral infections such as colds or flu, and sometimes bacterial infections; the temperature alone does not identify the cause. Rest and fluids may help with comfort. Seek medical advice for a very high or persistent fever, or sooner for a young infant, confusion, trouble breathing, severe dehydration, stiff neck, or rapidly worsening symptoms. This is educational information, not a diagnosis or personal medical advice.";
+  }
+
+  if (/\b(diabetes|blood sugar|glucose)\b/.test(lower)) {
+    return "Diabetes is a group of conditions in which blood glucose stays too high because the body does not make enough insulin or cannot use it effectively. Type 1 and type 2 diabetes have different causes and care plans, and tests are needed to diagnose them. Persistent thirst, frequent urination, fatigue, or blurred vision can have many causes, so discuss them with a clinician. Do not start or change medication based on general information. This is educational information, not a diagnosis or personal medical advice.";
+  }
+
+  if (/\b(high blood pressure|hypertension|blood pressure)\b/.test(lower)) {
+    return "High blood pressure means the force of blood against artery walls is repeatedly higher than recommended. It often causes no symptoms, so diagnosis usually depends on properly taken readings over time rather than how someone feels. Many factors can contribute, and a clinician can interpret readings in context and discuss lifestyle or treatment options. Seek urgent care for a very high reading with chest pain, severe shortness of breath, weakness, confusion, or vision changes. This is educational information, not a diagnosis or personal medical advice.";
+  }
+
+  if (/\b(cough|sore throat|throat pain)\b/.test(lower)) {
+    return "Cough or sore throat can come from common viral infections, allergies, irritants, reflux, or other causes; symptoms alone cannot determine which one. Fluids and rest may ease mild symptoms. Contact a healthcare professional for severe or persistent symptoms, difficulty swallowing, dehydration, or a high fever; seek urgent care for trouble breathing, blue lips, or rapidly worsening symptoms. This is educational information, not a diagnosis or personal medical advice.";
+  }
+
+  const questionSummary = prompt.replace(/\s+/g, " ").slice(0, 120);
+  return `You asked: “${questionSummary}”. I'm in offline mode, so I can't give a reliable topic-specific answer right now. The AI provider is unavailable; please try again later or contact a healthcare professional for personal medical advice. Seek urgent care for severe or rapidly worsening symptoms.`;
 }
 
 export function getPrimaryAiProvider({ geminiKey, groqKey, anthropicKey }) {
