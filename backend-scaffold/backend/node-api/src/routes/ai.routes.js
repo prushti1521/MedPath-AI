@@ -64,9 +64,9 @@ export function buildOfflineMedicalAnswer(messages) {
 }
 
 export function getPrimaryAiProvider({ geminiKey, groqKey, anthropicKey }) {
+  if (anthropicKey) return "anthropic";
   if (groqKey) return "groq";
   if (geminiKey) return "gemini";
-  if (anthropicKey) return "anthropic";
   return "offline";
 }
 
@@ -143,7 +143,7 @@ router.post("/chat", async (req, res) => {
   }
 
   // Try Groq next when its free-tier key is configured.
-  if (groqKey) {
+  if (groqKey && primaryProvider === "groq") {
     try {
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",

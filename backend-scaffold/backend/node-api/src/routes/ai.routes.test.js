@@ -105,7 +105,10 @@ test('Groq history bounds long message content', () => {
   assert.equal(message.content, 'a'.repeat(1000));
 });
 
-test('provider selection falls back to Gemini, Anthropic, then offline', () => {
+test('provider selection prefers Anthropic, then Groq, Gemini, and offline', () => {
+  assert.equal(getPrimaryAiProvider({ anthropicKey: 'set', geminiKey: 'set' }), 'anthropic');
+  assert.equal(getPrimaryAiProvider({ anthropicKey: 'set', groqKey: 'set' }), 'anthropic');
+  assert.equal(getPrimaryAiProvider({ groqKey: 'set', geminiKey: 'set' }), 'groq');
   assert.equal(getPrimaryAiProvider({ geminiKey: 'set' }), 'gemini');
   assert.equal(getPrimaryAiProvider({ anthropicKey: 'set' }), 'anthropic');
   assert.equal(getPrimaryAiProvider({}), 'offline');
