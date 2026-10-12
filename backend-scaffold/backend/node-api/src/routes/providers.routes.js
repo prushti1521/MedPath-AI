@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { query } from "../db/pool.js";
+import { ensureAppointmentLocationColumn } from "../db/appointmentMigration.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
@@ -89,17 +90,6 @@ router.get("/geocode", async (req, res) => {
 
 router.use(requireAuth);
 
-let appointmentLocationMigration;
-async function ensureAppointmentLocationColumn() {
-  if (!appointmentLocationMigration) {
-    appointmentLocationMigration = query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS location TEXT").catch((error) => {
-      appointmentLocationMigration = null;
-      throw error;
-    });
-  }
-  await appointmentLocationMigration;
-}
-
 router.post("/appointments", async (req, res) => {
   await ensureAppointmentLocationColumn();
   const { providerId, scheduledFor, location, checklist, questions } = req.body;
@@ -122,16 +112,16 @@ router.get("/appointments", async (req, res) => {
 
 router.patch("/appointments/:id", async (req, res) => {
   await ensureAppointmentLocationColumn();
-  const { checklist, questions, location, scheduledFor, status } = req.body;
+  const { checklist, questions, location, scheduledFor, status, clearSchedule } = req.body;
   const result = await query(
     `UPDATE appointments SET
        checklist = COALESCE($1, checklist),
        questions = COALESCE($2, questions),
-       location = COALESCE($3, location),
-       scheduled_for = COALESCE($4, scheduled_for),
+       location = CASE WHEN $6::boolean THEN NULL ELSE COALESCE($3, location) END,
+       scheduled_for = CASE WHEN $6::boolean THEN NULL ELSE COALESCE($4, scheduled_for) END,
        status = COALESCE($5, status)
-     WHERE id = $6 AND user_id = $7 RETURNING *`,
-    [checklist ? JSON.stringify(checklist) : null, questions ? JSON.stringify(questions) : null, location, scheduledFor, status, req.params.id, req.user.id]
+     WHERE id = $7 AND user_id = $8 RETURNING *`,
+    [checklist ? JSON.stringify(checklist) : null, questions ? JSON.stringify(questions) : null, location, scheduledFor, status, Boolean(clearSchedule), req.params.id, req.user.id]
   );
   if (!result.rowCount) return res.status(404).json({ error: "Appointment not found." });
   res.json({ appointment: result.rows[0] });

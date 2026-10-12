@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { query } from "../db/pool.js";
+import { ensureAppointmentLocationColumn } from "../db/appointmentMigration.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
@@ -7,9 +8,16 @@ router.use(requireAuth);
 
 router.get("/", async (req, res, next) => {
   try {
+  await ensureAppointmentLocationColumn();
   const [profileRes, appointmentsRes, medsRes, symptomCountsRes, symptomsRes, reportsRes, remindersRes] = await Promise.all([
     query("SELECT full_name FROM medical_profiles WHERE user_id = $1", [req.user.id]),
-    query("SELECT * FROM appointments WHERE user_id = $1 AND scheduled_for >= now() ORDER BY scheduled_for ASC LIMIT 1", [req.user.id]),
+    query(
+      `SELECT id, scheduled_for AS "scheduledFor", location, COUNT(*) OVER() AS "activeCount"
+       FROM appointments
+       WHERE user_id = $1 AND scheduled_for >= now() AND status = 'scheduled'
+       ORDER BY scheduled_for ASC LIMIT 1`,
+      [req.user.id]
+    ),
     query(
       `SELECT COUNT(*) AS count FROM medications m
        JOIN medical_profiles p ON m.profile_id = p.id
@@ -30,6 +38,7 @@ router.get("/", async (req, res, next) => {
 
   const profile = profileRes.rows[0] || {};
   const nextAppointment = appointmentsRes.rows[0] || null;
+  const appointmentCount = Number(nextAppointment?.activeCount || 0);
   const medicationReminders = Number(medsRes.rows[0]?.count || 0);
   const symptomCounts = Object.fromEntries(symptomCountsRes.rows.map((row) => [row.urgency_level, Number(row.count)]));
   const emergencyCount = symptomCounts.emergency || 0;
@@ -71,6 +80,7 @@ router.get("/", async (req, res, next) => {
         ? "Medication reminders are active. Stay on schedule."
         : "No major issues detected.",
     nextAppointment,
+    appointmentCount,
     medicationReminders,
     recentSymptoms,
     healthScore: score,

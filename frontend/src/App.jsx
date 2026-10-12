@@ -524,9 +524,9 @@ function HomePage({ go, profile, dashboard, loadingDashboard, authToken }) {
           onClick={() => go("symptom")}
         />
         <DashboardCard
-          title={dashboard?.nextAppointment?.provider || "No upcoming visits"}
+          title={dashboard?.appointmentCount ? `${dashboard.appointmentCount} active` : "No upcoming visits"}
           label="Upcoming Appointments"
-          value={dashboard?.nextAppointment ? `${new Date(dashboard.nextAppointment.scheduledFor).toLocaleString()} at ${dashboard.nextAppointment.provider}` : "Schedule a check-in or follow-up."}
+          value={dashboard?.nextAppointment ? `${new Date(dashboard.nextAppointment.scheduledFor).toLocaleString()} at ${dashboard.nextAppointment.location || "Location not set"}` : "Schedule a check-in or follow-up."}
           icon={CalendarCheck}
           accent={T.clay}
           onClick={() => go("appointments")}
@@ -1187,7 +1187,7 @@ function TimelinePage({ authToken }) {
 /* ---------------------------------------------------------------
    APPOINTMENT PREP
 ----------------------------------------------------------------*/
-function AppointmentPrep({ authToken }) {
+function AppointmentPrep({ authToken, onAppointmentChanged }) {
   const [items, setItems] = useState([
     { id: 1, label: "Photo ID and insurance card", done: false },
     { id: 2, label: "List of current medications and dosages", done: false },
@@ -1206,6 +1206,7 @@ function AppointmentPrep({ authToken }) {
   const [appointmentLocation, setAppointmentLocation] = useState("");
   const [scheduledFor, setScheduledFor] = useState("");
   const [appointmentSaveStatus, setAppointmentSaveStatus] = useState("");
+  const [isEditingAppointment, setIsEditingAppointment] = useState(false);
 
   useEffect(() => {
     async function loadAppointment() {
@@ -1255,8 +1256,31 @@ function AppointmentPrep({ authToken }) {
       setAppointmentLocation(data.appointment.location || details.location);
       setScheduledFor(dateTimeInputValue(data.appointment.scheduled_for || details.scheduledFor));
       setAppointmentSaveStatus("Appointment saved.");
+      setIsEditingAppointment(false);
+      await onAppointmentChanged?.();
     } catch {
       setAppointmentSaveStatus("Could not save appointment. Try again.");
+    }
+  }
+
+  async function deleteAppointment() {
+    if (!appointmentId) return;
+    setAppointmentSaveStatus("Deleting appointment…");
+    const options = { headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` } };
+    try {
+      const response = await fetch(`${API_BASE}/providers/appointments/${appointmentId}`, {
+        ...options,
+        method: "PATCH",
+        body: JSON.stringify({ clearSchedule: true }),
+      });
+      if (!response.ok) throw new Error("Unable to delete appointment.");
+      setAppointmentLocation("");
+      setScheduledFor("");
+      setIsEditingAppointment(false);
+      setAppointmentSaveStatus("Appointment deleted.");
+      await onAppointmentChanged?.();
+    } catch {
+      setAppointmentSaveStatus("Could not delete appointment. Try again.");
     }
   }
 
@@ -1273,44 +1297,75 @@ function AppointmentPrep({ authToken }) {
     persist(items, nextQuestions).catch(() => setSaveStatus("Save failed"));
   };
   const doneCount = items.filter((i) => i.done).length;
+  const hasSavedAppointment = Boolean(appointmentId && appointmentLocation && scheduledFor);
 
   return (
     <div>
       <SectionTitle eyebrow="Appointment prep" title="Get ready for your visit" sub="A personalized checklist based on your recent symptom check." />
       {saveStatus && <div style={{ fontSize: 13, color: saveStatus === "Saved" ? T.sage : T.inkSoft, marginBottom: 10 }}>{saveStatus}</div>}
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ fontWeight: 600, color: T.ink, marginBottom: 14 }}>Appointment details</div>
-        <form onSubmit={saveAppointmentDetails}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0 14px" }}>
-            <Field label="Place of appointment">
-              <input
-                aria-label="Place of appointment"
-                style={inputStyle}
-                value={appointmentLocation}
-                onChange={(event) => setAppointmentLocation(event.target.value)}
-                placeholder="Clinic, hospital, or address"
-                required
-              />
-            </Field>
-            <Field label="Date and time">
-              <input
-                aria-label="Appointment date and time"
-                style={inputStyle}
-                type="datetime-local"
-                value={scheduledFor}
-                onChange={(event) => setScheduledFor(event.target.value)}
-                required
-              />
-            </Field>
+      {hasSavedAppointment && !isEditingAppointment ? (
+        <Card style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ fontWeight: 600, color: T.ink }}>Saved appointment</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.inkSoft, fontSize: 14 }}>
+                <MapPin size={16} aria-hidden="true" />{appointmentLocation}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.inkSoft, fontSize: 14 }}>
+                <CalendarCheck size={16} aria-hidden="true" />{new Date(scheduledFor).toLocaleString()}
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <GhostButton onClick={() => { setAppointmentSaveStatus(""); setIsEditingAppointment(true); }}>Edit</GhostButton>
+              <button
+                type="button"
+                aria-label="Delete appointment"
+                title="Delete appointment"
+                onClick={deleteAppointment}
+                disabled={appointmentSaveStatus === "Deleting appointment…"}
+                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, border: `1px solid ${T.line}`, borderRadius: 9, background: "transparent", color: T.red, cursor: "pointer" }}
+              >
+                <Trash2 size={17} />
+              </button>
+            </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-            <span role="status" style={{ fontSize: 13, color: appointmentSaveStatus === "Appointment saved." ? T.sage : T.inkSoft }}>{appointmentSaveStatus}</span>
-            <PrimaryButton icon={CalendarCheck} disabled={!appointmentLocation.trim() || !scheduledFor || appointmentSaveStatus === "Saving…"}>
-              Save appointment
-            </PrimaryButton>
-          </div>
-        </form>
-      </Card>
+          {appointmentSaveStatus && <div role="status" style={{ fontSize: 13, color: T.inkSoft, marginTop: 10 }}>{appointmentSaveStatus}</div>}
+        </Card>
+      ) : (
+        <Card style={{ marginBottom: 16 }}>
+          <div style={{ fontWeight: 600, color: T.ink, marginBottom: 14 }}>Appointment details</div>
+          <form onSubmit={saveAppointmentDetails}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0 14px" }}>
+              <Field label="Place of appointment">
+                <input
+                  aria-label="Place of appointment"
+                  style={inputStyle}
+                  value={appointmentLocation}
+                  onChange={(event) => setAppointmentLocation(event.target.value)}
+                  placeholder="Clinic, hospital, or address"
+                  required
+                />
+              </Field>
+              <Field label="Date and time">
+                <input
+                  aria-label="Appointment date and time"
+                  style={inputStyle}
+                  type="datetime-local"
+                  value={scheduledFor}
+                  onChange={(event) => setScheduledFor(event.target.value)}
+                  required
+                />
+              </Field>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+              <span role="status" style={{ fontSize: 13, color: appointmentSaveStatus === "Appointment saved." ? T.sage : T.inkSoft }}>{appointmentSaveStatus}</span>
+              <PrimaryButton icon={CalendarCheck} disabled={!appointmentLocation.trim() || !scheduledFor || appointmentSaveStatus === "Saving…"}>
+                Save appointment
+              </PrimaryButton>
+            </div>
+          </form>
+        </Card>
+      )}
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <div style={{ fontWeight: 600, color: T.ink }}>What to bring</div>
@@ -2137,7 +2192,7 @@ export default function App() {
     symptom: <SymptomCheck go={go} onSaved={loadDashboard} />,
     profile: <ProfilePage profile={profile} setProfile={setProfile} uploadPhoto={uploadProfilePhoto} removePhoto={removeProfilePhoto} />,
     timeline: <TimelinePage authToken={authToken} />,
-    appointments: <AppointmentPrep authToken={authToken} />,
+    appointments: <AppointmentPrep authToken={authToken} onAppointmentChanged={loadDashboard} />,
     doctors: <DoctorFinder />,
     meds: <MedicationsPage authToken={authToken} />,
     ask: <AskAI />,
