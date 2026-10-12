@@ -284,10 +284,10 @@ export function buildNearbyProvidersQuery({ lat, lon, radius = 5000, type = "all
   }
   if (!tags) throw new RangeError("Unsupported provider type.");
 
-  const elements = tags.flatMap(([tag, pattern]) => ["node", "way", "relation"].map(
-    (element) => `${element}(around:${searchRadius},${latitude},${longitude})[${tag}~"^(${pattern})$",i];`
-  ));
-  return `[out:json][timeout:15];(${elements.join("")});out center tags;`;
+  const selectors = tags.map(([tag, pattern]) =>
+    `nwr(around:${searchRadius},${latitude},${longitude})[${tag}~"^(${pattern})$",i];`
+  );
+  return `[out:json][timeout:25];(${selectors.join("")});out center tags 500;`;
 }
 
 // Overpass API proxy — avoids browser CORS/rate-limit issues
@@ -308,7 +308,7 @@ router.get("/nearby-providers", async (req, res) => {
   for (const endpoint of endpoints) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 18000);
+      const timeout = setTimeout(() => controller.abort(), 28000);
       const resp = await fetch(endpoint, {
         method: "POST",
         headers: {
