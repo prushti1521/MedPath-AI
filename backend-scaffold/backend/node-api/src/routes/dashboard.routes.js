@@ -97,6 +97,16 @@ router.get("/", async (req, res, next) => {
       : flaggedReportCount > 0
         ? "Review report"
         : "Stable";
+  const healthSummary = emergencyCount > 0
+    ? "A recent emergency-level symptom was logged. Reach out to care if needed."
+    : urgentCount > 0
+      ? "Some urgent symptoms were recorded. Follow up with your clinician."
+      : medicationReminders > 0
+        ? "Medication reminders are active. Stay on schedule."
+        : "No major issues detected.";
+  const reportHealthNote = flaggedReportCount > 0
+    ? `Your latest report contains ${flaggedReportCount} extracted abnormal result${flaggedReportCount === 1 ? "" : "s"}. Review the original report with a clinician; automated extraction can be inaccurate.`
+    : "";
   const riskAlerts = [];
   if (emergencyCount > 0) riskAlerts.push(`${emergencyCount} emergency symptom${emergencyCount > 1 ? "s" : ""}`);
   if (urgentCount > 0) riskAlerts.push(`${urgentCount} urgent symptom${urgentCount > 1 ? "s" : ""}`);
@@ -105,16 +115,7 @@ router.get("/", async (req, res, next) => {
 
   const dashboard = {
     healthStatus,
-    healthSummary:
-      emergencyCount > 0
-        ? "A recent emergency-level symptom was logged. Reach out to care if needed."
-        : urgentCount > 0
-        ? "Some urgent symptoms were recorded. Follow up with your clinician."
-        : flaggedReportCount > 0
-        ? `Your latest report contains ${flaggedReportCount} extracted abnormal result${flaggedReportCount === 1 ? "" : "s"}. Review the original report with a clinician; automated extraction can be inaccurate.`
-        : medicationReminders > 0
-        ? "Medication reminders are active. Stay on schedule."
-        : "No major issues detected.",
+    healthSummary: [healthSummary, reportHealthNote].filter(Boolean).join(" "),
     nextAppointment,
     appointmentCount,
     medicationReminders,
