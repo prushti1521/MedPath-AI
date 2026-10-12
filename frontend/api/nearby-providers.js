@@ -11,6 +11,14 @@ const PROVIDER_SEARCH_TAGS = {
   laboratory: [["amenity", "laboratory"], ["healthcare", "laboratory"]],
   doctor: [["amenity", "doctors|doctor|dentist"], ["healthcare", "doctor|dentist"]],
 };
+const PHOTON_SEARCH_TERMS = {
+  hospital: "hospital",
+  clinic: "clinic",
+  pharmacy: "pharmacy",
+  urgent_care: "urgent care",
+  laboratory: "laboratory",
+  doctor: "doctor",
+};
 
 export const config = { maxDuration: 60 };
 
@@ -29,6 +37,92 @@ function buildQuery({ lat, lon, radius = 5000, type = "all" }) {
     `nwr(around:${searchRadius},${latitude},${longitude})[${tag}~"^(${pattern})$",i];`
   );
   return `[out:json][timeout:25];(${selectors.join("")});out center tags 500;`;
+}
+
+function distanceMeters(firstLatitude, firstLongitude, secondLatitude, secondLongitude) {
+  const toRadians = (value) => value * Math.PI / 180;
+  const latitudeDelta = toRadians(secondLatitude - firstLatitude);
+  const longitudeDelta = toRadians(secondLongitude - firstLongitude);
+  const haversine = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(toRadians(firstLatitude)) * Math.cos(toRadians(secondLatitude))
+    * Math.sin(longitudeDelta / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+}
+
+function photonTypeMatches(properties, requestedType) {
+  const key = String(properties.osm_key || "").toLowerCase();
+  const value = String(properties.osm_value || "").toLowerCase();
+  const amenityOrHealthcare = key === "amenity" || key === "healthcare";
+
+  if (requestedType === "all") {
+    return (amenityOrHealthcare && ["hospital", "clinic", "health_centre", "pharmacy", "doctor", "doctors", "dentist", "urgent_care", "laboratory", "medical_centre"].includes(value))
+      || (key === "shop" && ["chemist", "medical_supply"].includes(value));
+  }
+  if (requestedType === "hospital") return amenityOrHealthcare && value === "hospital";
+  if (requestedType === "clinic") return amenityOrHealthcare && ["clinic", "health_centre"].includes(value);
+  if (requestedType === "pharmacy") return (amenityOrHealthcare && value === "pharmacy") || (key === "shop" && value === "chemist");
+  if (requestedType === "urgent_care") return amenityOrHealthcare && value === "urgent_care";
+  if (requestedType === "laboratory") return amenityOrHealthcare && value === "laboratory";
+  if (requestedType === "doctor") return amenityOrHealthcare && ["doctor", "doctors", "dentist"].includes(value);
+  return false;
+}
+
+async function fetchPhotonNearby({ latitude, longitude, radius, type, startedAt }) {
+  const matches = [];
+  const categories = type === "all" ? Object.keys(PHOTON_SEARCH_TERMS) : [type];
+
+  for (const category of categories) {
+    const remainingMs = 55000 - (Date.now() - startedAt);
+    if (remainingMs < 1000) break;
+
+    const photonUrl = new URL("https://photon.komoot.io/api/");
+    photonUrl.searchParams.set("q", PHOTON_SEARCH_TERMS[category]);
+    photonUrl.searchParams.set("lat", String(latitude));
+    photonUrl.searchParams.set("lon", String(longitude));
+    photonUrl.searchParams.set("limit", "50");
+
+    try {
+      const result = await fetch(photonUrl, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "MedPathAI/1.0 (https://medpath-ai-frontend-project.vercel.app)",
+        },
+        signal: AbortSignal.timeout(Math.min(4000, remainingMs - 500)),
+      });
+      if (!result.ok) continue;
+
+      const data = await result.json();
+      for (const feature of data.features || []) {
+        const properties = feature.properties || {};
+        if (!photonTypeMatches(properties, category)) continue;
+        const coordinates = feature.geometry?.coordinates || [];
+        const featureLongitude = Number(coordinates[0]);
+        const featureLatitude = Number(coordinates[1]);
+        if (!Number.isFinite(featureLatitude) || !Number.isFinite(featureLongitude)) continue;
+        const distance = distanceMeters(latitude, longitude, featureLatitude, featureLongitude);
+        if (distance > radius) continue;
+
+        matches.push({
+          type: properties.osm_type || "node",
+          id: properties.osm_id || `${properties.osm_key}-${properties.name}-${featureLatitude}-${featureLongitude}`,
+          lat: featureLatitude,
+          lon: featureLongitude,
+          center: { lat: featureLatitude, lon: featureLongitude },
+          tags: {
+            [properties.osm_key]: properties.osm_value,
+            name: properties.name,
+            phone: properties.phone,
+            website: properties.website,
+            opening_hours: properties.opening_hours,
+          },
+        });
+      }
+    } catch (error) {
+      console.warn(`Photon ${category} search failed: ${error.cause?.code || error.message}`);
+    }
+  }
+
+  return matches;
 }
 
 export default async function handler(request, response) {
@@ -51,11 +145,11 @@ export default async function handler(request, response) {
   const startedAt = Date.now();
 
   for (const endpoint of endpoints) {
-    const remainingMs = 55000 - (Date.now() - startedAt);
+    const remainingMs = 25000 - (Date.now() - startedAt);
     if (remainingMs < 1000) break;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), Math.min(26000, remainingMs - 1000));
+    const timeout = setTimeout(() => controller.abort(), Math.min(10000, remainingMs - 500));
     try {
       const url = new URL(endpoint);
       url.searchParams.set("data", query);
@@ -71,11 +165,29 @@ export default async function handler(request, response) {
         console.warn(`Overpass ${endpoint} returned ${result.status}.`);
         continue;
       }
-      return response.status(200).json(await result.json());
+      const data = await result.json();
+      if (data.elements?.length) {
+        response.setHeader("Cache-Control", "public, s-maxage=120, stale-while-revalidate=600");
+        return response.status(200).json(data);
+      }
     } catch (error) {
       clearTimeout(timeout);
       console.warn(`Overpass ${endpoint} failed: ${error.cause?.code || error.message}`);
     }
+  }
+
+  try {
+    const latitude = Number(request.query.lat);
+    const longitude = Number(request.query.lon);
+    const radius = Number(request.query.radius || 5000);
+    const type = String(request.query.type || "all").toLowerCase();
+    const elements = await fetchPhotonNearby({ latitude, longitude, radius, type, startedAt });
+    if (elements.length) {
+      response.setHeader("Cache-Control", "public, s-maxage=120, stale-while-revalidate=600");
+      return response.status(200).json({ elements, source: "photon" });
+    }
+  } catch (error) {
+    console.warn(`Photon provider fallback failed: ${error.cause?.code || error.message}`);
   }
 
   return response.status(503).json({ error: "Live provider search is temporarily unavailable. Please try again." });
