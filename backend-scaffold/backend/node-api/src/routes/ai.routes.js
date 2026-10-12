@@ -320,10 +320,15 @@ router.get("/nearby-providers", async (req, res) => {
         signal: controller.signal,
       });
       clearTimeout(timeout);
-      if (!resp.ok) continue;
+      if (!resp.ok) {
+        const detail = (await resp.text().catch(() => "")).slice(0, 160).replace(/\s+/g, " ");
+        console.warn(`Overpass ${endpoint} returned ${resp.status}: ${detail}`);
+        continue;
+      }
       const data = await resp.json();
       return res.json(data);
     } catch (err) {
+      console.warn(`Overpass request to ${endpoint} failed: ${err.message}`);
       continue;
     }
   }
