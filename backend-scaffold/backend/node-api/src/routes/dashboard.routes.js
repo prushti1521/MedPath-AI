@@ -6,6 +6,26 @@ import { requireAuth } from "../middleware/auth.js";
 const router = Router();
 router.use(requireAuth);
 
+function parseReportSummary(value) {
+  if (typeof value !== "string") return value && typeof value === "object" ? value : {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function reportTextItems(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => typeof item === "string" ? item : item && typeof item === "object"
+      ? Object.values(item).filter((part) => typeof part === "string" || typeof part === "number").join(" · ")
+      : "")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 router.get("/", async (req, res, next) => {
   try {
   await ensureAppointmentLocationColumn();
@@ -32,7 +52,7 @@ router.get("/", async (req, res, next) => {
       [req.user.id]
     ),
     query("SELECT free_text, urgency_level, created_at FROM symptom_sessions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 3", [req.user.id]),
-    query("SELECT report_type, uploaded_at FROM medical_reports WHERE user_id = $1 ORDER BY uploaded_at DESC LIMIT 3", [req.user.id]),
+    query("SELECT report_type, uploaded_at, extracted_summary FROM medical_reports WHERE user_id = $1 ORDER BY uploaded_at DESC LIMIT 3", [req.user.id]),
     query("SELECT id, type, title, due_at, completed FROM reminders WHERE user_id = $1 AND completed = false ORDER BY due_at ASC LIMIT 3", [req.user.id]),
   ]);
 
@@ -47,6 +67,13 @@ router.get("/", async (req, res, next) => {
   const recentSymptomCount = emergencyCount + urgentCount + routineCount;
   const recentSymptoms = symptomsRes.rows;
   const recentReports = reportsRes.rows;
+  const latestReportSummary = parseReportSummary(recentReports[0]?.extracted_summary);
+  const latestReportHighlights = [
+    ...reportTextItems(latestReportSummary.key_findings),
+    ...reportTextItems(latestReportSummary.abnormal_values),
+  ].slice(0, 2);
+  const latestReportFollowUpQuestions = reportTextItems(latestReportSummary.follow_up_questions);
+  const flaggedReportCount = reportTextItems(latestReportSummary.abnormal_values).length;
   const reminders = remindersRes.rows;
 
   const baseScore = 90;
@@ -63,10 +90,17 @@ router.get("/", async (req, res, next) => {
     )
   );
 
-  const healthStatus = emergencyCount > 0 ? "High risk" : urgentCount > 0 ? "Moderate risk" : "Stable";
+  const healthStatus = emergencyCount > 0
+    ? "High risk"
+    : urgentCount > 0
+      ? "Moderate risk"
+      : flaggedReportCount > 0
+        ? "Review report"
+        : "Stable";
   const riskAlerts = [];
   if (emergencyCount > 0) riskAlerts.push(`${emergencyCount} emergency symptom${emergencyCount > 1 ? "s" : ""}`);
   if (urgentCount > 0) riskAlerts.push(`${urgentCount} urgent symptom${urgentCount > 1 ? "s" : ""}`);
+  if (flaggedReportCount > 0) riskAlerts.push(`Latest report lists ${flaggedReportCount} abnormal result${flaggedReportCount === 1 ? "" : "s"} to review with your clinician`);
   if (medicationReminders > 3) riskAlerts.push("Multiple medication reminders due");
 
   const dashboard = {
@@ -76,6 +110,8 @@ router.get("/", async (req, res, next) => {
         ? "A recent emergency-level symptom was logged. Reach out to care if needed."
         : urgentCount > 0
         ? "Some urgent symptoms were recorded. Follow up with your clinician."
+        : flaggedReportCount > 0
+        ? `Your latest report contains ${flaggedReportCount} extracted abnormal result${flaggedReportCount === 1 ? "" : "s"}. Review the original report with a clinician; automated extraction can be inaccurate.`
         : medicationReminders > 0
         ? "Medication reminders are active. Stay on schedule."
         : "No major issues detected.",
@@ -84,8 +120,9 @@ router.get("/", async (req, res, next) => {
     medicationReminders,
     recentSymptoms,
     healthScore: score,
-    healthScoreDetails: `Based on ${emergencyCount + urgentCount + routineCount} symptom entries and medication reminders.`,
+    healthScoreDetails: `Based on ${emergencyCount + urgentCount + routineCount} symptom entries and medication reminders.${flaggedReportCount > 0 ? ` Latest report includes ${flaggedReportCount} extracted abnormal result${flaggedReportCount === 1 ? "" : "s"}; the score does not interpret lab values.` : ""}`,
     riskAlerts,
+    latestReportHighlights,
     aiSuggestions: buildAiSuggestions({
       emergencyCount,
       urgentCount,
@@ -93,6 +130,8 @@ router.get("/", async (req, res, next) => {
       medicationCount: medicationReminders,
       hasAppointment: Boolean(nextAppointment),
       reportCount: recentReports.length,
+      flaggedReportCount,
+      reportFollowUpQuestion: latestReportFollowUpQuestions[0],
       reminderCount: reminders.length,
     }),
     recentReports,
@@ -112,6 +151,8 @@ export function buildAiSuggestions({
   medicationCount,
   hasAppointment,
   reportCount,
+  flaggedReportCount,
+  reportFollowUpQuestion,
   reminderCount,
 }) {
   const suggestions = [];
@@ -120,6 +161,12 @@ export function buildAiSuggestions({
     suggestions.push(`You logged ${emergencyCount} emergency-level symptom ${emergencyCount === 1 ? "entry" : "entries"} in the past 30 days. Review them with a clinician; seek urgent care for severe or worsening symptoms.`);
   } else if (urgentCount > 0) {
     suggestions.push(`You logged ${urgentCount} urgent symptom ${urgentCount === 1 ? "entry" : "entries"} in the past 30 days. Consider discussing them with your clinician, especially if they persist or worsen.`);
+  }
+
+  if (reportFollowUpQuestion && suggestions.length < 2) {
+    suggestions.push(`From your latest report, consider asking: ${reportFollowUpQuestion}`);
+  } else if (flaggedReportCount > 0 && suggestions.length < 2) {
+    suggestions.push("Your latest report contains extracted abnormal results. Review them with your clinician; automated extraction can be inaccurate.");
   }
 
   if (reminderCount > 0) {

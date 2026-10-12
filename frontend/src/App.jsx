@@ -499,6 +499,10 @@ function LoginPage({ onLogin }) {
 }
 
 function HomePage({ go, profile, dashboard, loadingDashboard, authToken }) {
+  const recentHealthNotes = [
+    ...(dashboard?.recentSymptoms?.slice(0, 1).map((symptom) => symptom.free_text) || []),
+    ...(dashboard?.latestReportHighlights?.slice(0, 1).map((finding) => `Report: ${finding}`) || []),
+  ].filter(Boolean);
   const defaultCards = [
     { key: "symptom", title: "Check symptoms", desc: "Answer a few questions and get an urgency read before you decide what to do next.", icon: Stethoscope, accent: T.teal },
     { key: "appointments", title: "Prep for a visit", desc: "Get a personalized checklist of what to bring and ask.", icon: CalendarCheck, accent: T.clay },
@@ -541,8 +545,8 @@ function HomePage({ go, profile, dashboard, loadingDashboard, authToken }) {
         />
         <DashboardCard
           title={`${dashboard?.recentSymptoms?.length || 0} logged`}
-          label="Recent Symptoms"
-          value={dashboard?.recentSymptoms?.slice(0, 2).map((s) => s.free_text).join(" · ") || "No recent symptom entries."}
+          label="Recent Symptoms & Reports"
+          value={recentHealthNotes.join(" · ") || "No recent symptom entries or report findings."}
           icon={AlertTriangle}
           accent={T.red}
           onClick={() => go("symptom")}
