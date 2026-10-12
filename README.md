@@ -26,38 +26,59 @@ Reports are user-specific. Uploaded files and extracted summaries are stored in 
 
 ## Tech Stack
 
+### Languages
+
+- JavaScript (ES modules and JSX) for the frontend and Node API
+- Python for the FastAPI AI service
+- SQL for PostgreSQL schema and queries
+
 ### Frontend
 
-- React 19 and React DOM
-- Vite for development and production builds
+- React 19 and React DOM, with Vite 8 and the React plugin for development and production builds
 - Recharts for visualizations and Lucide React for icons
-- CSS and inline component styles
+- CSS and inline component styles; no CSS framework
+- `react-router-dom`, Chart.js, and `react-chartjs-2` are declared dependencies but are not currently imported by the frontend
 
 ### Backend and API
 
-- Node.js 22 and Express
-- PostgreSQL access through `pg`
+- Node.js 22 and Express 4 for the REST API
+- PostgreSQL access through `pg` and parameterized SQL queries; no ORM
 - JWT authentication and bcrypt password hashing
 - Multer file uploads and Zod request validation
 - CORS, Helmet, Express rate limiting, and dotenv configuration
+- Node's built-in `fetch` for external AI and geocoding APIs
 
-### Database and report files
+### Python AI service
 
-- PostgreSQL stores accounts, profiles, symptoms, appointments, reminders, medications, and reports
-- JSONB stores flexible checklist and extracted-report data
-- Original report bytes use PostgreSQL `BYTEA`, with the original filename and MIME type
+- Python with FastAPI, Uvicorn, and Pydantic for the project's separate AI service
+- Anthropic Python SDK for Claude-powered triage, report OCR structuring, RAG answers, and medication-interaction fallback
+- Tesseract OCR through `pytesseract` and Pillow image processing; the Tesseract executable must also be installed
+- `sentence-transformers` embeddings with `psycopg` and `pgvector` for the RAG vector-search implementation
+- `python-dotenv` for environment configuration; this service is not part of the current Render production deployment
+
+### Database and storage
+
+- PostgreSQL stores accounts, login history, profiles, allergies, conditions, symptoms, appointments, reminders, medications, reports, and AI conversations
+- `pg` and `psycopg` connect the Node and Python services to PostgreSQL
+- `JSONB` stores flexible checklist and extracted-report data; `BYTEA` stores original report files
+- `pgcrypto` provides UUID generation. `pgvector` is included for the RAG implementation, but its extension and knowledge-base table are currently commented out in the baseline schema and must be enabled/populated for retrieval to work
 
 ### AI services
 
-- **Currently configured in production:** Google Gemini API (`GEMINI_API_KEY`) powers Ask AI and report extraction. Ask AI defaults to `gemini-3.8-flash`; report extraction can retry with `gemini-3.5-flash-lite` when the primary model is temporarily busy or rate-limited. Free-tier quotas and availability limits apply.
+- **Currently configured in production:** Google Gemini API, called through its Generative Language REST API using Node's built-in `fetch` and `GEMINI_API_KEY`, powers Ask AI and report extraction. Ask AI defaults to `gemini-3.8-flash`; report extraction can retry with `gemini-3.5-flash-lite` when the primary model is temporarily busy or rate-limited. Free-tier quotas and availability limits apply.
 - **Optional Node API integrations:** Groq and Anthropic adapters are present in the code, but their keys are not configured in the current Render production environment.
-- **Optional local service:** a separate Python FastAPI/Uvicorn service supports routes configured through `AI_SERVICE_URL`. It is not part of the Render production deployment and its current implementation requires an Anthropic key.
+- **Python AI service:** selected routes can connect to it through `AI_SERVICE_URL`; its Claude-powered features require an Anthropic key. It is not currently deployed to Render.
 - Ask AI uses limited offline guidance for supported topics when no online provider can answer.
+
+### External data and geocoding
+
+- OpenStreetMap Nominatim provides location search/geocoding for provider discovery
 
 ### Deployment and validation
 
 - Vercel hosts the React frontend; Render hosts the Node API and PostgreSQL database
-- Docker builds the Render API; Docker Compose is available for local multi-service development
+- Docker builds the Render API from `node:22-alpine`; a Docker Compose file describes local PostgreSQL/pgvector, Redis, Node API, and Python service containers
+- Redis is declared in the local Compose configuration but is not currently used by the API. The Python service directory does not currently include a Dockerfile, so its Compose container needs one before it can be built
 - `npm test` runs API tests; `npm run build` creates the frontend production build
 
 ## Prerequisites
@@ -65,7 +86,7 @@ Reports are user-specific. Uploaded files and extracted summaries are stored in 
 - Node.js 22 or newer
 - PostgreSQL
 - npm
-- Python 3.8 or newer only if running the optional FastAPI service
+- Python 3.8 or newer to run the FastAPI AI service
 
 ## Local Development
 
@@ -110,9 +131,9 @@ npm run dev
 
 Open the Vite URL printed in the terminal, normally `http://localhost:5173`. In development the frontend defaults to `http://localhost:4000`; set `VITE_API_BASE` to override it.
 
-### Optional Python Service
+### Python AI Service
 
-The Node API handles Gemini-based Ask AI and report extraction directly. Some symptom, medication-interaction, and RAG conversation routes can call the optional FastAPI service via `AI_SERVICE_URL` (defaults to `http://localhost:8000`). The Python service's current OCR/RAG implementation uses Anthropic and requires a valid Anthropic API key. See `backend-scaffold/backend/docker-compose.yml` and `backend-scaffold/backend/ai-service/requirements.txt` for the local setup.
+The Node API handles Gemini-based Ask AI and report extraction directly. Symptom, medication-interaction, and RAG conversation routes can call the FastAPI service via `AI_SERVICE_URL` (defaults to `http://localhost:8000`). The Python service's current OCR/RAG implementation uses Anthropic and requires a valid Anthropic API key. The service is part of the project but is not currently deployed to Render. See `backend-scaffold/backend/docker-compose.yml` and `backend-scaffold/backend/ai-service/requirements.txt` for the local setup.
 
 ## Project Structure
 
@@ -127,7 +148,7 @@ The Node API handles Gemini-based Ask AI and report extraction directly. Some sy
 │   │   ├── src/index.js            Express server and route mounting
 │   │   ├── src/db/schema.sql       PostgreSQL schema
 │   │   └── src/routes/             Authenticated API route handlers
-│   └── ai-service/                 Optional local FastAPI service
+│   └── ai-service/                 Python FastAPI AI service
 │       ├── main.py
 │       └── triage.py, interactions.py, rag.py, ocr.py
 ├── Dockerfile                      Render Node API image
