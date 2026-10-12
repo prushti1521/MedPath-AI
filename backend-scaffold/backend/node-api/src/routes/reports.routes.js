@@ -13,7 +13,12 @@ fs.mkdirSync(uploadDir, { recursive: true });
 let originalNameMigration;
 async function ensureOriginalNameColumn() {
   if (!originalNameMigration) {
-    originalNameMigration = query("ALTER TABLE medical_reports ADD COLUMN IF NOT EXISTS original_name TEXT").catch((error) => {
+    originalNameMigration = (async () => {
+      await query("ALTER TABLE medical_reports ADD COLUMN IF NOT EXISTS original_name TEXT");
+      await query("ALTER TABLE medical_reports ADD COLUMN IF NOT EXISTS file_mime_type TEXT");
+      await query("ALTER TABLE medical_reports ADD COLUMN IF NOT EXISTS file_data BYTEA");
+      await query("ALTER TABLE medical_reports ALTER COLUMN file_url DROP NOT NULL");
+    })().catch((error) => {
       originalNameMigration = null;
       throw error;
     });
@@ -31,7 +36,7 @@ const REPORT_EXTRACTION_PROMPT = `Read this medical report and return only valid
 {"key_findings":[],"diagnoses":[],"medications":[],"abnormal_values":[],"follow_up_questions":[]}
 Extract only information clearly stated in the document. Do not diagnose, infer a condition, or recommend treatment. Keep key_findings concise and plain-language. Include 2-4 useful questions the patient can ask their clinician. Use empty arrays when a section is not present.`;
 const upload = multer({
-  dest: uploadDir,
+  storage: multer.memoryStorage(),
   limits: { fileSize: REPORT_UPLOAD_LIMIT },
   fileFilter(_req, file, callback) {
     if (REPORT_MIME_TYPES.has(file.mimetype)) return callback(null, true);
@@ -43,7 +48,7 @@ async function extractReportSummary(file, reportType) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
 
-  const bytes = await fs.promises.readFile(file.path);
+  const bytes = file.buffer;
   let lastError;
   for (const [index, model] of GEMINI_REPORT_MODELS.entries()) {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
@@ -116,7 +121,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
   await ensureOriginalNameColumn();
   if (!req.file) return res.status(400).json({ error: "File upload is required." });
   const { reportType, category } = req.body;
-  const fileUrl = `/uploads/reports/${req.file.filename}`;
   const originalName = path.basename(req.file.originalname.replaceAll("\\", "/")) || "medical-report";
 
   let extractedSummary = null;
@@ -127,23 +131,30 @@ router.post("/upload", upload.single("file"), async (req, res) => {
   }
 
   const inserted = await query(
-    `INSERT INTO medical_reports (user_id, file_url, original_name, report_type, extracted_summary)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [req.user.id, fileUrl, originalName, reportType || null, extractedSummary ? JSON.stringify(extractedSummary) : null]
+    `INSERT INTO medical_reports (user_id, original_name, file_mime_type, file_data, report_type, extracted_summary)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [req.user.id, originalName, req.file.mimetype, req.file.buffer, reportType || null, extractedSummary ? JSON.stringify(extractedSummary) : null]
   );
 
-  res.status(201).json({ report: inserted.rows[0], uploadedFile: { fileUrl, reportType, extractedSummary } });
+  res.status(201).json({ report: inserted.rows[0], uploadedFile: { originalName, reportType, extractedSummary } });
 });
 
 router.get("/:id/file", async (req, res) => {
   await ensureOriginalNameColumn();
   const result = await query(
-    "SELECT file_url, original_name FROM medical_reports WHERE id = $1 AND user_id = $2",
+    "SELECT file_url, original_name, file_mime_type, file_data FROM medical_reports WHERE id = $1 AND user_id = $2",
     [req.params.id, req.user.id]
   );
   if (!result.rowCount) return res.status(404).json({ error: "Report not found." });
 
-  const fileName = path.basename(String(result.rows[0].file_url || "").replaceAll("\\", "/"));
+  const report = result.rows[0];
+  const mimeType = report.file_mime_type || "application/octet-stream";
+  const extensions = { "application/pdf": ".pdf", "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp" };
+  const downloadName = path.basename(String(report.original_name || `medical-report-${req.params.id}${extensions[mimeType] || ""}`).replaceAll("\\", "/"));
+
+  if (report.file_data) return res.type(mimeType).attachment(downloadName).send(report.file_data);
+
+  const fileName = path.basename(String(report.file_url || "").replaceAll("\\", "/"));
   if (!fileName) return res.status(404).json({ error: "Report file not found." });
   const filePath = path.join(uploadDir, fileName);
   try {
@@ -151,8 +162,6 @@ router.get("/:id/file", async (req, res) => {
   } catch {
     return res.status(404).json({ error: "Report file is no longer available." });
   }
-
-  const downloadName = path.basename(String(result.rows[0].original_name || `medical-report-${req.params.id}`).replaceAll("\\", "/"));
   res.download(filePath, downloadName);
 });
 

@@ -113,8 +113,10 @@ CREATE TABLE symptom_timeline_entries (
 CREATE TABLE medical_reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  file_url TEXT NOT NULL,
+  file_url TEXT,
   original_name TEXT,
+  file_mime_type TEXT,
+  file_data BYTEA,
   report_type TEXT, -- lab | imaging | discharge_summary | other
   extracted_summary JSONB, -- { diagnoses, medications, abnormal_values, follow_up_questions }
   uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now()

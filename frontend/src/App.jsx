@@ -2153,7 +2153,10 @@ function ReportsPage({ authToken, onReportsChanged }) {
           return (
             <Card key={report.id} style={{ padding: "16px 18px" }}>
               <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
-                <strong style={{ color: T.ink, textTransform: "capitalize" }}>{String(report.report_type || "Report").replaceAll("_", " ")}</strong>
+                <div>
+                  <strong style={{ color: T.ink, textTransform: "capitalize" }}>{String(report.report_type || "Report").replaceAll("_", " ")}</strong>
+                  {report.original_name && <div style={{ color: T.inkSoft, fontSize: 12.5, marginTop: 4 }}>{report.original_name}</div>}
+                </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <time style={{ color: T.inkSoft, fontSize: 12 }}>{report.uploaded_at ? new Date(report.uploaded_at).toLocaleDateString() : "Recently uploaded"}</time>
                     <button
