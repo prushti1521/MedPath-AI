@@ -106,7 +106,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
   let extractedSummary = null;
   try {
-    extractedSummary = await extractReportSummary(req.file);
+    extractedSummary = await extractReportSummary(req.file, reportType);
   } catch (err) {
     console.error("Gemini report extraction failed:", err.message);
   }
