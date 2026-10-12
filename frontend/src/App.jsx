@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from "react"
 import {
   Home, Stethoscope, UserCircle, Activity, CalendarCheck, MapPin,
   MessageCircleQuestion, AlertTriangle, Phone, ChevronRight, ChevronLeft,
-  Check, X, Plus, Trash2, Upload, Search, Star, Clock, ShieldAlert,
+  Check, X, Plus, Trash2, Upload, Download, Search, Star, Clock, ShieldAlert,
   HeartPulse, Sparkles, Send, Menu, LogOut, FileText, Pill as PillIcon
 } from "lucide-react";
 import {
@@ -1956,6 +1956,7 @@ function ReportsPage({ authToken, onReportsChanged }) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [deletingReportId, setDeletingReportId] = useState(null);
+  const [downloadingReportId, setDownloadingReportId] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const fileInputRef = useRef(null);
@@ -2048,6 +2049,34 @@ function ReportsPage({ authToken, onReportsChanged }) {
     }
   }
 
+  async function downloadReport(report) {
+    setError("");
+    setDownloadingReportId(report.id);
+    try {
+      const response = await fetch(`${API_BASE}/reports/${report.id}/file`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Unable to download this report.");
+      }
+      const file = await response.blob();
+      const objectUrl = URL.createObjectURL(file);
+      const anchor = document.createElement("a");
+      const extension = file.type === "application/pdf" ? ".pdf" : file.type === "image/png" ? ".png" : file.type === "image/webp" ? ".webp" : ".jpg";
+      anchor.href = objectUrl;
+      anchor.download = report.original_name || `medical-report-${report.id}${extension}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (err) {
+      setError(err.message || "Unable to download this report.");
+    } finally {
+      setDownloadingReportId(null);
+    }
+  }
+
   function getSummarySections(value) {
     if (!value) return [];
     let summary = value;
@@ -2127,6 +2156,16 @@ function ReportsPage({ authToken, onReportsChanged }) {
                 <strong style={{ color: T.ink, textTransform: "capitalize" }}>{String(report.report_type || "Report").replaceAll("_", " ")}</strong>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <time style={{ color: T.inkSoft, fontSize: 12 }}>{report.uploaded_at ? new Date(report.uploaded_at).toLocaleDateString() : "Recently uploaded"}</time>
+                    <button
+                      type="button"
+                      aria-label={`Download ${report.original_name || "report file"}`}
+                      title="Download original report"
+                      onClick={() => downloadReport(report)}
+                      disabled={downloadingReportId === report.id}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "none", background: "transparent", color: T.tealDeep, font: "inherit", cursor: downloadingReportId === report.id ? "wait" : "pointer" }}
+                    >
+                      <Download size={15} aria-hidden="true" />Download
+                    </button>
                   <button
                     type="button"
                     aria-label={`Delete ${String(report.report_type || "report").replaceAll("_", " ")}`}

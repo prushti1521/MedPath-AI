@@ -10,6 +10,17 @@ router.use(requireAuth);
 
 const uploadDir = path.join("src", "uploads", "reports");
 fs.mkdirSync(uploadDir, { recursive: true });
+let originalNameMigration;
+async function ensureOriginalNameColumn() {
+  if (!originalNameMigration) {
+    originalNameMigration = query("ALTER TABLE medical_reports ADD COLUMN IF NOT EXISTS original_name TEXT").catch((error) => {
+      originalNameMigration = null;
+      throw error;
+    });
+  }
+  await originalNameMigration;
+}
+
 const GEMINI_REPORT_MODELS = [...new Set([
   process.env.GEMINI_OCR_MODEL || process.env.GEMINI_MODEL || "gemini-3.8-flash",
   "gemini-3.5-flash-lite",
@@ -76,8 +87,9 @@ async function extractReportSummary(file, reportType) {
 }
 
 router.get("/", async (req, res) => {
+  await ensureOriginalNameColumn();
   const result = await query(
-    `SELECT id, file_url, report_type, extracted_summary, uploaded_at
+    `SELECT id, file_url, original_name, report_type, extracted_summary, uploaded_at
      FROM medical_reports
      WHERE user_id = $1
      ORDER BY uploaded_at DESC
@@ -88,21 +100,24 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", async (req, res) => {
-  const { fileUrl, reportType, extractedSummary } = req.body;
+  await ensureOriginalNameColumn();
+  const { fileUrl, originalName, reportType, extractedSummary } = req.body;
   if (!fileUrl) return res.status(400).json({ error: "fileUrl is required." });
 
   const inserted = await query(
-    `INSERT INTO medical_reports (user_id, file_url, report_type, extracted_summary)
-     VALUES ($1, $2, $3, $4) RETURNING *`,
-    [req.user.id, fileUrl, reportType || null, extractedSummary ? JSON.stringify(extractedSummary) : null]
+    `INSERT INTO medical_reports (user_id, file_url, original_name, report_type, extracted_summary)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [req.user.id, fileUrl, originalName || null, reportType || null, extractedSummary ? JSON.stringify(extractedSummary) : null]
   );
   res.status(201).json({ report: inserted.rows[0] });
 });
 
 router.post("/upload", upload.single("file"), async (req, res) => {
+  await ensureOriginalNameColumn();
   if (!req.file) return res.status(400).json({ error: "File upload is required." });
   const { reportType, category } = req.body;
   const fileUrl = `/uploads/reports/${req.file.filename}`;
+  const originalName = path.basename(req.file.originalname.replaceAll("\\", "/")) || "medical-report";
 
   let extractedSummary = null;
   try {
@@ -112,12 +127,33 @@ router.post("/upload", upload.single("file"), async (req, res) => {
   }
 
   const inserted = await query(
-    `INSERT INTO medical_reports (user_id, file_url, report_type, extracted_summary)
-     VALUES ($1, $2, $3, $4) RETURNING *`,
-    [req.user.id, fileUrl, reportType || null, extractedSummary ? JSON.stringify(extractedSummary) : null]
+    `INSERT INTO medical_reports (user_id, file_url, original_name, report_type, extracted_summary)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [req.user.id, fileUrl, originalName, reportType || null, extractedSummary ? JSON.stringify(extractedSummary) : null]
   );
 
   res.status(201).json({ report: inserted.rows[0], uploadedFile: { fileUrl, reportType, extractedSummary } });
+});
+
+router.get("/:id/file", async (req, res) => {
+  await ensureOriginalNameColumn();
+  const result = await query(
+    "SELECT file_url, original_name FROM medical_reports WHERE id = $1 AND user_id = $2",
+    [req.params.id, req.user.id]
+  );
+  if (!result.rowCount) return res.status(404).json({ error: "Report not found." });
+
+  const fileName = path.basename(String(result.rows[0].file_url || "").replaceAll("\\", "/"));
+  if (!fileName) return res.status(404).json({ error: "Report file not found." });
+  const filePath = path.join(uploadDir, fileName);
+  try {
+    await fs.promises.access(filePath);
+  } catch {
+    return res.status(404).json({ error: "Report file is no longer available." });
+  }
+
+  const downloadName = path.basename(String(result.rows[0].original_name || `medical-report-${req.params.id}`).replaceAll("\\", "/"));
+  res.download(filePath, downloadName);
 });
 
 router.delete("/:id", async (req, res) => {
