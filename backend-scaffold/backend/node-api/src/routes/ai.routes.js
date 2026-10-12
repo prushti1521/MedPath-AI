@@ -328,7 +328,7 @@ router.get("/nearby-providers", async (req, res) => {
       const data = await resp.json();
       return res.json(data);
     } catch (err) {
-      console.warn(`Overpass request to ${endpoint} failed: ${err.message}`);
+      console.warn(`Overpass request to ${endpoint} failed: ${err.message} (${err.cause?.code || "no-cause-code"}) ${err.cause?.message || ""}`);
       continue;
     }
   }
