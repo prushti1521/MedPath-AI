@@ -10,7 +10,10 @@ router.use(requireAuth);
 
 const uploadDir = path.join("src", "uploads", "reports");
 fs.mkdirSync(uploadDir, { recursive: true });
-const GEMINI_REPORT_MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+const GEMINI_REPORT_MODELS = [...new Set([
+  process.env.GEMINI_OCR_MODEL || process.env.GEMINI_MODEL || "gemini-3.8-flash",
+  "gemini-3.5-flash-lite",
+])];
 const REPORT_UPLOAD_LIMIT = 10 * 1024 * 1024;
 const REPORT_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 const REPORT_EXTRACTION_PROMPT = `Read this medical report and return only valid JSON with this shape:
@@ -30,29 +33,46 @@ async function extractReportSummary(file) {
   if (!apiKey) return null;
 
   const bytes = await fs.promises.readFile(file.path);
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_REPORT_MODEL}:generateContent`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-    body: JSON.stringify({
-      contents: [{
-        role: "user",
-        parts: [
-          { text: REPORT_EXTRACTION_PROMPT },
-          { inlineData: { mimeType: file.mimetype, data: bytes.toString("base64") } },
-        ],
-      }],
-      generationConfig: { maxOutputTokens: 1200, responseMimeType: "application/json" },
-    }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data?.error?.message || `Gemini returned ${response.status}.`);
+  let lastError;
+  for (const [index, model] of GEMINI_REPORT_MODELS.entries()) {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      body: JSON.stringify({
+        contents: [{
+          role: "user",
+          parts: [
+            { text: reportType === "prescription" ? PRESCRIPTION_EXTRACTION_PROMPT : REPORT_EXTRACTION_PROMPT },
+            { inlineData: { mimeType: file.mimetype, data: bytes.toString("base64") } },
+          ],
+        }],
+        generationConfig: { maxOutputTokens: 1200, responseMimeType: "application/json" },
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) {
+      const text = data.candidates?.[0]?.content?.parts
+        ?.map((part) => part.text || "")
+        .join("")
+        .trim();
+      try {
+        if (!text) throw new Error("Gemini returned no report summary.");
+        return JSON.parse(text);
+      } catch (error) {
+        lastError = error;
+      }
+    } else {
+      lastError = new Error(data?.error?.message || `Gemini returned ${response.status}.`);
+      const retryable = response.status === 429 || response.status >= 500;
+      if (!retryable || index === GEMINI_REPORT_MODELS.length - 1) throw lastError;
+      console.warn(`Gemini report model ${model} returned ${response.status}; retrying with ${GEMINI_REPORT_MODELS[index + 1]}.`);
+      continue;
+    }
 
-  const text = data.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text || "")
-    .join("")
-    .trim();
-  if (!text) throw new Error("Gemini returned no report summary.");
-  return JSON.parse(text);
+    if (index === GEMINI_REPORT_MODELS.length - 1) throw lastError;
+    console.warn(`Gemini report model ${model} returned an unreadable summary; retrying with ${GEMINI_REPORT_MODELS[index + 1]}.`);
+  }
+  throw lastError || new Error("Unable to extract report summary.");
 }
 
 router.get("/", async (req, res) => {
