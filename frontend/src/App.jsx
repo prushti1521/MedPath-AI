@@ -1306,7 +1306,7 @@ function DoctorFinder() {
   const [locationQuery, setLocationQuery] = useState("");
   const [locationLabel, setLocationLabel] = useState("");
   const [typeFilter, setTypeFilter] = useState("All");
-  const [radius, setRadius] = useState(5000); // meters
+  const [radius, setRadius] = useState(2500); // meters
   const [loc, setLoc] = useState(null);
   const [places, setPlaces] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1534,9 +1534,6 @@ function DoctorFinder() {
           }} style={{ ...inputStyle, width: 150 }}>
             <option value={1000}>Within 1 km</option>
             <option value={2500}>Within 2.5 km</option>
-            <option value={5000}>Within 5 km</option>
-            <option value={10000}>Within 10 km</option>
-            <option value={25000}>Within 25 km</option>
           </select>
         </div>
         <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
