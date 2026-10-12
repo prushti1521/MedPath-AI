@@ -89,17 +89,30 @@ router.get("/geocode", async (req, res) => {
 
 router.use(requireAuth);
 
+let appointmentLocationMigration;
+async function ensureAppointmentLocationColumn() {
+  if (!appointmentLocationMigration) {
+    appointmentLocationMigration = query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS location TEXT").catch((error) => {
+      appointmentLocationMigration = null;
+      throw error;
+    });
+  }
+  await appointmentLocationMigration;
+}
+
 router.post("/appointments", async (req, res) => {
-  const { providerId, scheduledFor, checklist, questions } = req.body;
+  await ensureAppointmentLocationColumn();
+  const { providerId, scheduledFor, location, checklist, questions } = req.body;
   const inserted = await query(
-    `INSERT INTO appointments (user_id, provider_id, scheduled_for, checklist, questions)
-     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-    [req.user.id, providerId || null, scheduledFor || null, JSON.stringify(checklist || []), JSON.stringify(questions || [])]
+    `INSERT INTO appointments (user_id, provider_id, scheduled_for, location, checklist, questions)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [req.user.id, providerId || null, scheduledFor || null, location || null, JSON.stringify(checklist || []), JSON.stringify(questions || [])]
   );
   res.status(201).json({ appointment: inserted.rows[0] });
 });
 
 router.get("/appointments", async (req, res) => {
+  await ensureAppointmentLocationColumn();
   const result = await query(
     "SELECT * FROM appointments WHERE user_id = $1 ORDER BY scheduled_for ASC NULLS LAST",
     [req.user.id]
@@ -108,14 +121,17 @@ router.get("/appointments", async (req, res) => {
 });
 
 router.patch("/appointments/:id", async (req, res) => {
-  const { checklist, questions, status } = req.body;
+  await ensureAppointmentLocationColumn();
+  const { checklist, questions, location, scheduledFor, status } = req.body;
   const result = await query(
     `UPDATE appointments SET
        checklist = COALESCE($1, checklist),
        questions = COALESCE($2, questions),
-       status = COALESCE($3, status)
-     WHERE id = $4 AND user_id = $5 RETURNING *`,
-    [checklist ? JSON.stringify(checklist) : null, questions ? JSON.stringify(questions) : null, status, req.params.id, req.user.id]
+       location = COALESCE($3, location),
+       scheduled_for = COALESCE($4, scheduled_for),
+       status = COALESCE($5, status)
+     WHERE id = $6 AND user_id = $7 RETURNING *`,
+    [checklist ? JSON.stringify(checklist) : null, questions ? JSON.stringify(questions) : null, location, scheduledFor, status, req.params.id, req.user.id]
   );
   if (!result.rowCount) return res.status(404).json({ error: "Appointment not found." });
   res.json({ appointment: result.rows[0] });

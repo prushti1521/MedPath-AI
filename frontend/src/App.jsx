@@ -809,6 +809,13 @@ function dateInputValue(value) {
   return match?.[1] || "";
 }
 
+function dateTimeInputValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
 function ProfilePage({ profile, setProfile, uploadPhoto, removePhoto }) {
   const [error, setError] = useState("");
   const [saveStatus, setSaveStatus] = useState("idle");
@@ -1196,6 +1203,9 @@ function AppointmentPrep({ authToken }) {
   ]);
   const [appointmentId, setAppointmentId] = useState(null);
   const [saveStatus, setSaveStatus] = useState("");
+  const [appointmentLocation, setAppointmentLocation] = useState("");
+  const [scheduledFor, setScheduledFor] = useState("");
+  const [appointmentSaveStatus, setAppointmentSaveStatus] = useState("");
 
   useEffect(() => {
     async function loadAppointment() {
@@ -1205,6 +1215,8 @@ function AppointmentPrep({ authToken }) {
       const appointment = data.appointments?.[0];
       if (appointment) {
         setAppointmentId(appointment.id);
+        setAppointmentLocation(appointment.location || "");
+        setScheduledFor(dateTimeInputValue(appointment.scheduled_for));
         if (Array.isArray(appointment.checklist) && appointment.checklist.length) setItems(appointment.checklist);
         if (Array.isArray(appointment.questions) && appointment.questions.length) setQuestions(appointment.questions);
       }
@@ -1222,6 +1234,30 @@ function AppointmentPrep({ authToken }) {
     const data = await response.json();
     if (!appointmentId) setAppointmentId(data.appointment.id);
     setSaveStatus("Saved");
+  }
+
+  async function saveAppointmentDetails(event) {
+    event.preventDefault();
+    setAppointmentSaveStatus("Saving…");
+    const details = {
+      location: appointmentLocation.trim(),
+      scheduledFor: new Date(scheduledFor).toISOString(),
+    };
+    const options = { headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` } };
+
+    try {
+      const response = appointmentId
+        ? await fetch(`${API_BASE}/providers/appointments/${appointmentId}`, { ...options, method: "PATCH", body: JSON.stringify(details) })
+        : await fetch(`${API_BASE}/providers/appointments`, { ...options, method: "POST", body: JSON.stringify({ ...details, checklist: items, questions }) });
+      if (!response.ok) throw new Error("Unable to save appointment details.");
+      const data = await response.json();
+      setAppointmentId(data.appointment.id);
+      setAppointmentLocation(data.appointment.location || details.location);
+      setScheduledFor(dateTimeInputValue(data.appointment.scheduled_for || details.scheduledFor));
+      setAppointmentSaveStatus("Appointment saved.");
+    } catch {
+      setAppointmentSaveStatus("Could not save appointment. Try again.");
+    }
   }
 
   const toggle = (id) => {
@@ -1242,6 +1278,39 @@ function AppointmentPrep({ authToken }) {
     <div>
       <SectionTitle eyebrow="Appointment prep" title="Get ready for your visit" sub="A personalized checklist based on your recent symptom check." />
       {saveStatus && <div style={{ fontSize: 13, color: saveStatus === "Saved" ? T.sage : T.inkSoft, marginBottom: 10 }}>{saveStatus}</div>}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ fontWeight: 600, color: T.ink, marginBottom: 14 }}>Appointment details</div>
+        <form onSubmit={saveAppointmentDetails}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0 14px" }}>
+            <Field label="Place of appointment">
+              <input
+                aria-label="Place of appointment"
+                style={inputStyle}
+                value={appointmentLocation}
+                onChange={(event) => setAppointmentLocation(event.target.value)}
+                placeholder="Clinic, hospital, or address"
+                required
+              />
+            </Field>
+            <Field label="Date and time">
+              <input
+                aria-label="Appointment date and time"
+                style={inputStyle}
+                type="datetime-local"
+                value={scheduledFor}
+                onChange={(event) => setScheduledFor(event.target.value)}
+                required
+              />
+            </Field>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+            <span role="status" style={{ fontSize: 13, color: appointmentSaveStatus === "Appointment saved." ? T.sage : T.inkSoft }}>{appointmentSaveStatus}</span>
+            <PrimaryButton icon={CalendarCheck} disabled={!appointmentLocation.trim() || !scheduledFor || appointmentSaveStatus === "Saving…"}>
+              Save appointment
+            </PrimaryButton>
+          </div>
+        </form>
+      </Card>
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <div style={{ fontWeight: 600, color: T.ink }}>What to bring</div>

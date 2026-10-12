@@ -180,6 +180,7 @@ CREATE TABLE appointments (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   provider_id UUID REFERENCES healthcare_providers(id),
   scheduled_for TIMESTAMPTZ,
+  location TEXT,
   status TEXT NOT NULL DEFAULT 'scheduled', -- scheduled | completed | cancelled
   checklist JSONB NOT NULL DEFAULT '[]',
   questions JSONB NOT NULL DEFAULT '[]',
