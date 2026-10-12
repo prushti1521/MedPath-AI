@@ -28,7 +28,7 @@ const upload = multer({
   },
 });
 
-async function extractReportSummary(file) {
+async function extractReportSummary(file, reportType) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
 
