@@ -311,7 +311,11 @@ router.get("/nearby-providers", async (req, res) => {
       const timeout = setTimeout(() => controller.abort(), 18000);
       const resp = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "MedPathAI/1.0 (https://medpath-ai-frontend-project.vercel.app)",
+        },
         body: `data=${encodeURIComponent(overpassQuery)}`,
         signal: controller.signal,
       });
