@@ -114,7 +114,6 @@ router.post("/chat", async (req, res) => {
               role: message.role === "assistant" ? "model" : "user",
               parts: [{ text: String(message.content ?? "") }],
             })),
-            tools: [{ google_search: {} }],
             generationConfig: { maxOutputTokens: 1000 },
           }),
         });
