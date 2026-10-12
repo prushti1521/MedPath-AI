@@ -1341,8 +1341,11 @@ function DoctorFinder() {
         radius: searchRadius,
         type: requestedType === "All" ? "all" : requestedType,
       });
-      const proxyResp = await fetch(`${API_BASE}/ai/nearby-providers?${params}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      const proxyUrl = import.meta.env.DEV
+        ? `${API_BASE}/ai/nearby-providers?${params}`
+        : `/api/nearby-providers?${params}`;
+      const proxyResp = await fetch(proxyUrl, {
+        headers: import.meta.env.DEV && token ? { Authorization: `Bearer ${token}` } : {},
       });
       const data = await proxyResp.json().catch(() => ({}));
       if (!proxyResp.ok) throw new Error(data.error || "Live provider search is temporarily unavailable. Please try again.");
