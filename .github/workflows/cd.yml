@@ -30,4 +30,3 @@ jobs:
           node-version: 22
       - run: npm install -g vercel
       - run: vercel deploy --prod --yes --token=$VERCEL_TOKEN
-        working-directory: frontend
