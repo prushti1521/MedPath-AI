@@ -54,6 +54,7 @@ async function extractReportSummary(file, reportType) {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      signal: AbortSignal.timeout(20000),
       body: JSON.stringify({
         contents: [{
           role: "user",
@@ -123,20 +124,33 @@ router.post("/upload", upload.single("file"), async (req, res) => {
   const { reportType, category } = req.body;
   const originalName = path.basename(req.file.originalname.replaceAll("\\", "/")) || "medical-report";
 
+  const inserted = await query(
+    `INSERT INTO medical_reports (user_id, original_name, file_mime_type, file_data, report_type, extracted_summary)
+     VALUES ($1, $2, $3, $4, $5, NULL)
+     RETURNING id, user_id, original_name, file_mime_type, report_type, extracted_summary, uploaded_at`,
+    [req.user.id, originalName, req.file.mimetype, req.file.buffer, reportType || null]
+  );
+
   let extractedSummary = null;
   try {
     extractedSummary = await extractReportSummary(req.file, reportType);
   } catch (err) {
-    console.error("Gemini report extraction failed:", err.message);
+    console.error(`Gemini report extraction failed for report ${inserted.rows[0].id}:`, err.message);
   }
 
-  const inserted = await query(
-    `INSERT INTO medical_reports (user_id, original_name, file_mime_type, file_data, report_type, extracted_summary)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [req.user.id, originalName, req.file.mimetype, req.file.buffer, reportType || null, extractedSummary ? JSON.stringify(extractedSummary) : null]
-  );
+  let report = inserted.rows[0];
+  if (extractedSummary) {
+    const updated = await query(
+      `UPDATE medical_reports
+       SET extracted_summary = $1
+       WHERE id = $2 AND user_id = $3
+       RETURNING id, user_id, original_name, file_mime_type, report_type, extracted_summary, uploaded_at`,
+      [JSON.stringify(extractedSummary), report.id, req.user.id]
+    );
+    report = updated.rows[0];
+  }
 
-  res.status(201).json({ report: inserted.rows[0], uploadedFile: { originalName, reportType, extractedSummary } });
+  res.status(201).json({ report, uploadedFile: { originalName, reportType, extractedSummary } });
 });
 
 router.get("/:id/file", async (req, res) => {

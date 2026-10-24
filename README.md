@@ -205,11 +205,28 @@ cd frontend
 npm run build
 ```
 
+## CI/CD
+
+GitHub Actions runs the pipeline on every push to `main`.
+
+- **CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on pushes to `main` and on pull requests: backend `npm ci` and `npm test`, frontend `npm install` and `npm run build`, then a Docker build of the API image.
+- **CD** ([`.github/workflows/cd.yml`](.github/workflows/cd.yml)) runs only after CI succeeds on `main`: it triggers a Render deploy for the API through a deploy hook and deploys the frontend to Vercel with the Vercel CLI.
+- Render's **Auto-Deploy** is set to Off and Vercel's git auto-deploy is disabled in `frontend/vercel.json`, so each push deploys once, through the pipeline.
+
+Required repository secrets (Settings -> Secrets and variables -> Actions):
+
+| Secret | Purpose |
+| --- | --- |
+| `RENDER_DEPLOY_HOOK_URL` | Render deploy hook URL for the API service |
+| `VERCEL_TOKEN` | Vercel access token scoped to the frontend project |
+
+Never commit these values. If one is exposed, regenerate it and update the secret.
+
 ## Deployment
 
-- **Frontend:** Vercel deploys the `frontend` directory from `main` at `https://medpath-ai-frontend-project.vercel.app`.
-- **API and database:** Render runs the Node API and PostgreSQL. The current API base URL is `https://medpath-api-yxav.onrender.com`.
-- Push changes to `main`. If Render does not start a build automatically, use **Manual Deploy -> Deploy latest commit** in the Render dashboard.
+- **Frontend:** Vercel deploys the `frontend` directory at `https://medpath-ai-frontend-project.vercel.app`, triggered by the CD workflow.
+- **API and database:** Render runs the Node API and PostgreSQL. The current API base URL is `https://medpath-api-yxav.onrender.com`. The CD workflow triggers the deploy.
+- Push changes to `main`; CI runs first and CD deploys when it passes. To deploy manually, use **Manual Deploy -> Deploy latest commit** in the Render dashboard.
 - Render's free service may spin down while idle, so its first response after inactivity can be delayed.
 - Set `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN`, and AI provider keys in the hosting provider's environment settings, not in this README.
 
