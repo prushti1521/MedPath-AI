@@ -5,7 +5,7 @@
   "framework": "vite",
   "git": {
     "deploymentEnabled": {
-      "main": true
+      "main": false
     }
   }
 }
